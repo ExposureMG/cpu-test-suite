@@ -58,6 +58,9 @@ HTEST(rob_dsi_guard_unsimulated)
   /* the model's verdict alone */
   HT_EQ_U64(xts_exec_mem_guard(XI_lwz, 0x80640000u, &in, XTS_M_DSI, 0x1234, why, sizeof why), 1);
   HT_CHECK(strstr(why, "model predicts DSI at 1234") != NULL);
+  /* a load the model simulates is range-checked too (a wild load can hit MMIO): r4 = scratch is fine, the baseline canary is not */
+  HT_EQ_U64(xts_exec_mem_guard(XI_lwz, 0x80640000u, &in, XTS_M_OK, 0, why, sizeof why), 1);
+  in.gpr[4] = xts_scratch_addr() + 128;
   HT_EQ_U64(xts_exec_mem_guard(XI_lwz, 0x80640000u, &in, XTS_M_OK, 0, why, sizeof why), 0);
   if (id < 0) { HT_CHECK(1); return; }
   /* encode "<insn> ..., RA=4, RB=5" or "RA=4 + d" by setting the fields directly */

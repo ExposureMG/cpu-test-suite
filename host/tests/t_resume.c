@@ -1,7 +1,8 @@
 /* journal resume: a block hangs (or crashes) mid-way, the next boot records it and finishes the run.
  * Each "boot" is a forked child running the real xts_run() on a host root directory.
- * Without the crash page (lostpage) the case is unknown: boot 2 re-runs the block with CASE lines (RETRY) and hangs in
- * the same case again, so boot 3 knows it from the journal, quarantines only that case and finishes. */
+ * hang: progress.bin names the case; crash: crash.json (the crash path) names it. Without a breadcrumb (lostcrumb:
+ * progress.bin deleted) the case is unknown: boot 2 re-runs the block with a breadcrumb before every case (RETRY) and
+ * hangs in the same case again, so boot 3 knows it from progress.bin, quarantines only that case and finishes. */
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -23,9 +24,10 @@ static int tr_run(const xts_case_t *c, xts_ctx_t *ctx)
       uint64_t fake[40] = { 0 };
       fake[36] = 0x80001234;
       fake[37] = 0x9000000000003030ull;
-      xts_crash_record(0x300, fake);
+      fake[38] = 0x00000000DEAD0000ull;
+      xts_crash_handle(0x300, fake, 0x40000000u);  /* PIR 0: crash.json */
     }
-    _exit(9);                                    /* power cut / hang: nothing after this point happens */
+    _exit(9);                                    /* power cut / hang / reset: nothing after this point happens */
   }
   xts_emit_value(ctx, "index", ctx->case_index, "", XTS_ST_PASS);
   (void)c;
@@ -63,15 +65,20 @@ static void scenario(const char *name, int crash, int lose_page)
   snprintf(path, sizeof path, "%s/xts/host/0001/journal.txt", root);
   const char *j = ht_slurp(path);
   HT_CHECK(j && strstr(j, "BEGIN r0:t.resume:-:c1") && !strstr(j, "END r0:t.resume:-:c1"));
+  snprintf(path, sizeof path, "%s/xts/host/0001/progress.bin", root);
+  const char *pb = ht_slurp(path);
+  HT_CHECK(pb && strstr(pb, "\"state\":\"case\"") && strstr(pb, "\"case_id\":\"c07\"") && strstr(pb, "\"every\":1"));
+  snprintf(path, sizeof path, "%s/xts/host/0001/crash.json", root);
+  const char *cj = ht_slurp(path);
+  HT_CHECK(cj && strstr(cj, crash ? "\"state\":\"crashed\"" : "\"state\":\"armed\""));
+  if (crash) HT_CHECK(cj && strstr(cj, "\"dsisr\":\"40000000\"") && strstr(cj, "\"case_id\":\"c07\""));
   if (lose_page) {
-    snprintf(path, sizeof path, "%s/.xts_crashpage.bin", root);
+    snprintf(path, sizeof path, "%s/xts/host/0001/progress.bin", root);
     unlink(path);
     HT_EQ_U64(boot(root, 7, 0), 9);              /* boot 2: case unknown -> RETRY, per-case re-run, same hang */
-    unlink(path);
     snprintf(path, sizeof path, "%s/xts/host/0001/journal.txt", root);
     j = ht_slurp(path);
-    HT_CHECK(j && strstr(j, "RETRY r0:t.resume:-:c1") && strstr(j, "CASE r0:t.resume:-:c1 2\n") &&
-             !strstr(j, "CASE r0:t.resume:-:c1 3\n"));
+    HT_CHECK(j && strstr(j, "RETRY r0:t.resume:-:c1"));
   }
   HT_EQ_U64(boot(root, -1, 0), 0);               /* boot 2 (3) resumes */
   snprintf(path, sizeof path, "%s/xts/host/0001/journal.txt", root);
@@ -111,4 +118,4 @@ static void scenario(const char *name, int crash, int lose_page)
 
 HTEST(resume_hang) { scenario("hang", 0, 0); }
 HTEST(resume_crash) { scenario("crash", 1, 0); }
-HTEST(resume_no_crash_page) { scenario("lostpage", 0, 1); }
+HTEST(resume_no_breadcrumb) { scenario("lostcrumb", 0, 1); }

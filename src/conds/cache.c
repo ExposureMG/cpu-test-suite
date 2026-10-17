@@ -29,7 +29,7 @@ int xts_cond_evict_init(int want_l2)
   void *raw = malloc((size_t)need + 256);
   if (!raw) return -1;
   uint8_t *b = (uint8_t *)(((uintptr_t)raw + 127) & ~(uintptr_t)127);
-  if ((uintptr_t)b + need > xts_plat_heap_limit()) { free(raw); return -1; }   /* never grow into the crash page */
+  if ((uintptr_t)b + need > xts_plat_heap_limit()) { free(raw); return -1; }   /* never grow past the heap limit (stacks above) */
   for (uint32_t i = 0; i < need; i += 128) b[i] = (uint8_t)(i >> 7);            /* fault pages in; contents irrelevant */
   free(ev_raw);
   ev_raw = raw;

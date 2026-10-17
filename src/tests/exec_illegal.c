@@ -2,7 +2,9 @@
  *   hw       every instruction whose hardware.status is "illegal" (29: the 22 dropped AltiVec ops, lvsl128 / lvsr128, popcntb,
  *            mcrxr, dcba, fre, frsqrtes), 4 operand draws each
  *   ra0      update-form INDEXED loads / stores with RA = 0 (the invalid form "RA = 0"): lbzux lhzux lhaux lwzux lwaux ldux
- *            stbux sthux stwux stdux lfsux lfdux stfsux stfdux. RB holds a scratch pointer so an executing CPU stays in memory.
+ *            stbux sthux stwux stdux lfsux lfdux stfsux stfdux. RB holds a scratch pointer (never r0) and r0 is 0, so an executing
+ *            CPU stays in memory whether it reads RA = 0 as the literal 0 or as GPR[0]. Every word of the family also goes through
+ *            xts_exec_mem_guard (EA window inside scratch/big whatever the model says); an unsafe one is a skip, never executed.
  *   rart     update-form loads with RA = RT (the other invalid form), indexed AND D-form (lbzu lhzu lhau lwzu ldu): kept
  *            separate from ra0 (the old run never separated them)
  *   stcx0    stwcx. / stdcx. with Rc = 0
@@ -130,10 +132,20 @@ static int ill_run(const xts_case_t *c, xts_ctx_t *ctx)
     (void)irb;
   } else if (cls == C_RA0) {
     if (xe_gen_ops(d, r, &x, ops, ov, &g) < 0) return -1;
-    /* RB becomes the scratch pointer (EA = 0 + RB if the CPU executes the word) */
+    /* RB becomes the scratch pointer (EA = 0 + RB if the CPU executes the word). If a core read the RA = 0 field as GPR[0] instead
+     * of the literal 0, EA = r0 + RB: r0 is zeroed (not the canary) and RB is never r0 itself, so both readings land in scratch. */
     int irb = -1;
     for (int i = 0; i < nops; i++)
       if (d->ops[i].field == XTS_F_RB) irb = i;
+    if (ops[irb] == 0) {
+      int taken[32] = { 0 };
+      for (int i = 0; i < nops; i++)
+        if (ops[i] >= 0 && ops[i] < 32 && i != irb) taken[ops[i]] = 1;
+      int nr = 3;
+      while (nr < 30 && (taken[nr] || (XTS_RESERVED_GPRS & (1u << nr)))) nr++;
+      ops[irb] = nr;
+    }
+    xts_set_gpr(&x, 0, 0);
     xts_set_ptr(&x, (int)ops[irb], XE_WINDOW + xe_memoff[xts_rng_below(r, 8)]);
   } else {
     if (xe_gen_ops(d, r, &x, ops, ov, &g) < 0) return -1;
@@ -159,13 +171,23 @@ static int ill_run(const xts_case_t *c, xts_ctx_t *ctx)
   memcpy(mem_exp, x.mem_in, sizeof mem_exp);
   xts_mem_add(&m, xts_scratch_addr(), mem_exp, sizeof mem_exp);
   xts_mres_t mr = xts_model_exec(NULL, w, &x.in, &m, &mexp);
-  int st = xts_exec_kernel(&x, kb);
+  /* expected-illegal words trap before they touch memory on hardware that rejects them, but if a core revision executes one the
+   * access must land in test memory: the memory guard runs for every word here, whatever the model says, and a word whose inputs
+   * would reach outside scratch/big is not executed (the generator keeps the inputs inside, so this is a safety net) */
+  char guard[200];
+  int guarded = xts_exec_mem_guard(xts_decode1(w), w, &x.in, mr, m.fault_ea, guard, sizeof guard);
+  int st = guarded ? XTS_EXEC_NOTRUN : xts_exec_kernel(&x, kb);
   xts_json_t j;
   xj_init(&j, det, sizeof det);
   xj_obj(&j);
   xj_kv_str(&j, "class", what);
   xj_kv_str(&j, "expect", expect_illegal ? "illegal (cause 0x08)" : "no trap (control)");
   xj_kv_str(&j, "model", xts_mres_name(mr));
+  if (guarded) {
+    xj_kv_str(&j, "why", guard);
+    xe_emit_json(ctx, XTS_ST_SKIP, d->mnem, w, 1, &j);
+    return 0;
+  }
   int status;
   if (st == XTS_EXEC_DRYRUN || st == XTS_EXEC_SIMULATED) {
     status = XTS_ST_SKIP;

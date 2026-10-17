@@ -21,10 +21,11 @@
 | Command | What it does |
 |---|---|
 | `make PROFILE=p [BUILD=d]` | console ELF `d/xts-p.elf32`, then `check_illegal` on it |
-| `make host-test` | all `HTEST`s (host/tests): registry, scheduler, journal resume (forked boots with a simulated hang/crash), sinks, fit maths, encoder round trip, kernel builder, model add/or |
+| `make host-test` | all `HTEST`s (host/tests): registry, scheduler, journal resume (forked boots with a simulated hang/crash, also on FAT images: `t_crashrep_*`), sinks, fit maths, encoder round trip, kernel builder, model add/or |
 | `make host-dryrun PROFILE=p` | the whole profile on the PC through the real scheduler, sinks and journal (output in `d/dryrun-p/xts/host/0001/`). Single words are simulated by the model when it has a handler (status pass/fail as on hardware, `"backend":"host-model"`), otherwise `skip`. Every kernel is built with the encoder and every word decoded back: the last log line counts words/kernels/bad words; exit status 2 if any word does not decode as the instruction it was built for. This is how you validate a family without hardware. |
 | `make check` | `check-encoder` (C encoder vs `xenon-as -mvmx128 -mcell -many` for all 484 insns), `check-model` (results4 replay), `check-illegal` |
 | `make check-model` | per mnemonic: matched / mismatched (with diffs) / unimplemented; fails only on mismatches |
+| `make host-fatreplay` | the storage stack (sinks/journal -> libfat -> disc guard) on FAT32 images with injected USB faults: upstream libfat vs the patched stack (see "Storage") |
 
 ## Adding a test family (`src/tests/<family>.c`)
 ```c
@@ -61,7 +62,8 @@ XTS_FAMILY(exec_altivec, .kind = "semantic", .axes = "sf,vscr_nj", .enumerate = 
 ```
 - Name: the first `_` of the id becomes `.` (`exec_altivec` -> `exec.altivec`). Kinds: `self semantic timing sched mem smt calib`.
 - `.axes`: the axes the family is sensitive to; the scheduler only varies those (and only if the profile asks).
-- `.block_cases`: cases per journal block. After a hang or crash the next boot names the case from the crash page, else the journal's `CRASH` line, else the last `CASE` line, and quarantines only that case; a block with no named case is re-run once (`RETRY`) with a `CASE <key> <k>` line before every case, so a second hang names it. Unknown again (or 4 attempts / 15 quarantines) quarantines the whole block; `finish` blocks are never retried.
+- `.block_cases`: cases per journal block (files are written only between blocks). After a hang or crash the next boot names the case from `crash.json` (crash path), else from `progress.bin` (breadcrumb written before every case of `self`/`semantic` families, every 16th case of the other kinds), and quarantines only that case; a block with no named case is re-run once (`RETRY`) with a breadcrumb before every case, so a second hang names it. Unknown again (or 4 attempts / 15 quarantines) quarantines the whole block; `finish` blocks are never retried.
+- `run()` must not write files (no `fopen`, no `xts_write_small`, no `xts_results_foreach`): while cases run every file operation is refused and counted as a guard violation (`summary.json` `guard_violations`, run.log `BUG:`). Emit records; they are written at the block boundary.
 - Optional `.setup()` (once, before the first block; `<0` skips the family) and `.teardown()`.
 - Optional `.finish(ctx)`: summaries after the family's last block of a profile row (see "Family finish()").
 - Emitting yourself: `xts_record_t r; xts_record_init(&r); r.metric = "latency"; r.value = v; r.unit = "cycles";
@@ -189,7 +191,19 @@ HTEST(my_model_bits) { HT_EQ_U64(xts_enc(XI_addx, 0, 3, 4, 5), 0x7C642A14); HT_C
 | `detail` | family-defined object; semantic failures carry inputs, CPU result, model result and every differing item; `"truncated":true` is added if it did not fit |
 
 `failures.jsonl` repeats every `fail`, `hang` and `crash` record. `summary.json` counts statuses per family and per
-`axis=value`.
+`axis=value` (plus `write_errors`, `guard_violations`, `dropped_bytes`, `breadcrumbs`, `storage`).
+
+Hang / crash records (written by the core at the next boot, metric `result`, `case_id` = the quarantined case or `*`):
+- `detail.reason`, `detail.case_from` (`crash.json`, `progress.bin (the case that was running)`, `progress.bin (sparse
+  breadcrumbs: ...)`, `none ...`), `detail.action` (case quarantined / RETRY / whole block quarantined),
+  `detail.attempts`, `detail.case_index`;
+- crash: `detail.vector`, `detail.srr0`, `detail.report_outcome` and `detail.crash_report` = the whole `crash.json`
+  object (padding and `slot_NNN` members removed; README "Robustness" lists its keys);
+- hang: `detail.breadcrumb` = the `progress.bin` object when it named this block;
+- other hardware threads: `case_id` `pir<N>`, status `crash`, in the block PIR 0 was running (`detail.pir`, `vector`,
+  `srr0/1`, `dar`, `lr`, `ctr`, `r1`, `r3`, `count`, `main_case_id`, or `thr_entry` + `crash_report` when it came from
+  crash.json at a resume);
+- a crash outside every open block (`phase` `run_end`, `idle`, ...): family `core`, `case_id` `crash`.
 
 ## Interfaces at a glance
 - `xts/isa.h`: `xts_isa[]`, `XI_<mnem>` ids (`.` -> `_`), `xts_insn_t` (match/mask, form, isa, unit, priv, hw status,
@@ -275,6 +289,7 @@ A/B/A re-run; on the host the depth index).
 `.finish = fn` runs as its own journal block `r<row>:<family>:finish` right after the family's last case block of each
 profile row (after all axis combinations of the row). Exactly once per row and run: a resumed run calls it once, even
 when every case block finished in an earlier boot; a hang/crash inside it is recorded like any block and not retried.
+finish() is not case execution: it may read results back (`xts_results_foreach` flushes the sinks first).
 `ctx->c` is a synthetic case (`id "finish"`, `insn -1`), `ctx->case_index` -1, `ctx->cond` all defaults, and
 `ctx->fin` says what the row did: `blocks`, `ran_this_boot`, `done_earlier`, `quarantined`, `skipped`, `complete`.
 In-memory state gathered by `run()` only covers `ran_this_boot` blocks: when `!fin->complete`, recompute from
@@ -310,10 +325,84 @@ answer are `unknown`. pass = something checked and all within; fail = any lane o
 FPSCR / CR1 for the scalar forms) changed; info = nothing checkable. `xts_estimate_verdict(insn, word, in, out, j)` is the
 check itself, `xts_estimate_kind(insn, &vector)` the classifier.
 
-## Crash page
-The main thread's breadcrumb + crash record as before; an unhandled exception on PIR 1..5 goes to its own slot
-(`thr[pir-1]`: vector, SRR0/1, DAR, LR, r1, the main thread's block and case at the time, count), which breadcrumbs never
-clear. The next boot reports each as a `crash` record with case id `pir<N>` in the block the main thread was in.
+## Crash reports (`src/core/crash.c`, `src/core/slot.c`)
+- Per run (re-armed at every boot): `crash.json` (64 KB) and `progress.bin` (one sector) in the run directory, written
+  through libfat at a boundary, then `fatFlush`, `xts_plat_file_extent` (`fatFileExtent`; crash.json must be
+  contiguous: after a fragmented allocation a filler file of the same size takes those clusters and crash.json is
+  written again, up to 4 times), a raw read-back of sector 0 of each (magic check), and the extents + magic kept in RAM
+  with a checksum. From then on both are written only raw (`xts_plat_raw_write` = `xts_disc_write_marked`: only over a
+  sector that holds the magic, read back). libfat may still hold clean cache pages over those sectors; a page that
+  gets dirty for another file can put an older progress.bin sector back at a boundary, which is why the breadcrumb is
+  rewritten after every block-start boundary. After the crash path wrote crash.json, libfat never runs again.
+- Sector layout: `<'{' or ','>"slot_NNN":"<16-char magic>"` (magic at byte 13), members `,"key":value` (never across a
+  sector), spaces, `'\n'` at the end; the last sector of the file ends with `}`. Any subset of written sectors is still
+  one JSON object. `xts_spack_*` builds images, `xts_json_squeeze` strips padding and `slot_NNN` members.
+- `xts_crumb` (RAM) says what PIR 0 is doing; `xts_crumb_hook_install` (self/semantic blocks) adds the last executed
+  word and its input registers via an exec pre/post hook (not for timing kinds: the hook would sit next to the slot
+  call).
+- `xts_crash_handle(vector, ctx40, dsisr)`: PIR != 0 -> `xts_thrcrash[pir-1]` (RAM; PIR 0 writes crash.json kind
+  `thread` at its next case boundary, emits `pir<N>` records at the block end, then re-arms crash.json raw). PIR 0 ->
+  outcome `not_saved_storage_busy` (`xts_plat_storage_busy`: disc guard or USB poll in progress: nothing touched),
+  `not_saved_poisoned`, `not_saved_no_slot`, else the report is built and written (sectors 1.., then 0), `saved` or
+  `saved_fs_busy` (libfat was inside an update: the stick may need a check). Screen lines in `xts_crash_screen`.
+- Next boot (`xts_prev_load` + `mark_open_blocks`): records as in "Record schema", `crash_boot<N>.json`, `REPORT tb=`
+  in the journal (a report is ingested once), then `xts_slots_arm`. sysinfo.json `previous_boot` says what was found.
+- Host: directory mode uses the files themselves (pread/pwrite at idx*512, same magic check); image mode is the console
+  path. `xts_host_crash_sim` + `xts_plat_self_crash()` simulate the crash path in a forked boot; `xts_host_disc_hook`
+  runs before every device call (crash inside a storage operation).
+
+## Storage
+Path: core sinks/journal -> stdio -> libfat (`third_party/libfat`, patched, linked instead of `-lfat`) -> disc guard
+(`src/plat/disc_guard.{c,h}`) -> device (console: `usb2mass_ops_N`, the patched driver from `third_party/libxenon-usb`
+with `USB_FIX=1`; host image mode: `src/plat/disc_image_host.c`). Families never touch any of it; framework code uses:
+
+- `int xts_plat_storage_status(xts_storage_status_t *st)` (`xts/plat.h`): `poisoned`, the first error (`op`, `sector`,
+  `count`, `why`) and the guard's counters (`sectors_read/written`, `device_reads/writes`, `read_retries`,
+  `writes_refused`, `write_repairs/repaired`, `guard_ms`). Returns `poisoned`.
+- The core stops on poison: `xts_storage_dead()` (core.h) refuses every sink/journal file operation, puts "STORAGE ERROR
+  ... stop using this stick until it has been checked" on screen once, the block loop ends, `xts_run` returns -3 and the
+  console halts with the same message. The crash path writes nothing when poisoned.
+- Boundaries (`src/core/main.c`): `xts_sink_boundary()` = buffered output -> fwrite/fflush/fsync of every file ->
+  `xts_plat_storage_flush()` (`fatFlush`: FAT copies, FSInfo, every dirty page). Block start: BEGIN, axes, boundary,
+  breadcrumb, `xts_cases_running = 1`; block end: `xts_cases_running = 0`, axes reverted, records, boundary, END. While
+  `xts_cases_running` every `xts_pf_*`, `xts_write_small`, `xts_append_durable`, `xts_mkdirs`, `xts_results_foreach`
+  and `xts_sink_summary` call is refused (`xts_write_refused`). Run end: DONE, summary.json, files closed,
+  `xts_plat_storage_unmount()` (`fatFlush` + `fatUnmount`), then the "safe to power off" status line.
+  `xts_plat_halt` unmounts too when storage is healthy and no file operation / case is in progress.
+- Guard semantics: libfat's reads are read twice into differently pre-filled buffers and compared (one retry pair);
+  writes are read back and compared; a failed write is rewritten once and read back (so the range holds the intended
+  data, not a torn copy) and then latches anyway. After the latch writes are refused, reads still work.
+  `xts_disc_guard_init(dev, sector_size, enabled)`; `enabled = 0` is a counting pass-through.
+
+Raw sectors (for crash reports; `<plat/disc_guard.h>`, no malloc/stdio/libfat, verified like libfat's I/O):
+- `xts_disc_read(sector, n, buf)` - double-read verified; `0` or `XTS_DISC_E*`.
+- `xts_disc_write_marked(sector, buf, magic, magic_len, magic_off, flags)` - one sector; writes only if the sector
+  currently holds `magic` at `magic_off` (verified read) and `buf` carries the same magic there (the slot stays
+  claimable); read back after the write. `XTS_DISC_ENOMAGIC` = nothing written; `EVERIFY`/`EWRITE`/`EREAD` latch poison;
+  refused while poisoned (`EPOISONED`) unless `XTS_DISC_WM_ALLOW_POISONED`. Never while `xts_disc_busy()` (a guard
+  operation was interrupted, e.g. a crash inside the USB driver) - it returns `EBUSY`.
+- Locate a pre-allocated slot file while libfat is healthy: `fatFileExtent("uda:/xts/<tag>/<run>/crash.json", &first,
+  &n, &bps)` (`<fat_xts.h>`; 0 = contiguous; core code uses `xts_plat_file_extent`). Do not write raw sectors of a file
+  libfat has open; `fatFlush(root)` first.
+- `xts_disc_sector_size()`; sector numbers are absolute device sectors (what the DISC_INTERFACE gets).
+
+Host image mode (replays the console stack on the PC): `XTS_HOST_STORAGE=image:<file>` (or `--image <file>`) mounts a
+FAT image (`tools/fat_mkimage.py`) through the guard as `img:`; `XTS_DISC_GUARD=0` makes the guard a pass-through,
+`XTS_FAT_PAGES=<n>` sets libfat's cache pages (default 4, as on the console), `XTS_FAULTS=<spec>` injects device faults
+(`plat/disc_host.h`: `seed=`, per-call rates `short_read cbw_read torn_write cbw_write misdirect read_fail write_fail`,
+presets `unpatched:<rate>`, `patched:<rate>`, `desync:<rate>`, `at=<call>` for exactly one fault, `after=`, `max=`),
+`XTS_DISC_TRACE=1` prints every device call. The host links with `-Wl,--wrap=fopen,remove,mkdir,stat,fsync,fileno`
+(`HOST_WRAP`): `src/plat/fatio_host.c` sends calls on `<dev>:/` paths to libfat and everything else to libc.
+
+Checks: `make host-test` runs `t_storage_*` (guard unit tests, clean runs on superfloppy/MBR images incl. a second run on
+the same stick, poisoned runs stop without touching pre-existing files, the FAT-read-error allocation case, a 12-run mini
+replay) and `t_crashrep_*` (crash inside a case -> crash.json valid JSON + `fat_check.py` clean + pre-existing files
+intact + ingested and quarantined at the next boot; a killed boot -> progress.bin names the case; a crash inside a
+device write -> nothing touched; a file write while cases run -> refused; chunk flush + PART; packer/squeeze). After a
+console run, check an image of the stick with `tools/fat_check.py <image>` (`--list` shows every file with its hash). `make host-fatreplay [FATREPLAY_ARGS=...]` runs the full comparison (host/fatreplay.c has the scenario list and
+the column meanings); `tools/fat_check.py IMAGE --manifest M.json` checks any image, `--list` lists files with hashes.
+The console link fails if the map shows `libxenon.a(tinyehci.o)` with `USB_FIX=1`, any libfat but the vendored one, or
+`libxenon.a(except.o)`.
 
 ## Migration guide (Step 2: families onto the v2 API)
 Keep case ids and metric names exactly as they are; detail keys move to the unified schema. Delete the local helper after
@@ -341,7 +430,7 @@ moving its callers.
 | `#include "../conds/cond_util.h"` | `#include <xts/cond_util.h>` |
 | `extern xts_model_resv_clear`, `extern xf_estimate_ok` | `#include <model/model_priv.h>` (exec families only) |
 | exec_est own bound checks | `xts_estimate_verdict` / `XTS_M_ESTIMATE` (or keep exact-bit sweeps and use it for the verdict) |
-| smt `current_block()` + `xts_sink_emit_core` (crash-page parsing) | `xts_emit_block_info(NULL, "smt:<axis>", "info", value, unit, detail)` |
+| smt `current_block()` + `xts_sink_emit_core` (old crash-page parsing) | `xts_emit_block_info(NULL, "smt:<axis>", "info", value, unit, detail)` |
 | smt `prev_hooks` save/restore of `xts_exec_hooks` | `xts_exec_hook_add` / `xts_exec_hook_remove` |
 | `xts_exec_trap_range(0, ...)` from several axes | one index each (sibling 0, other_cores 1..3) |
 | libxenon externs in smt_console.c | `#include <plat/plat_libxenon.h>` |

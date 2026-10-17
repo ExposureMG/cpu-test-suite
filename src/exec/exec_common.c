@@ -212,7 +212,7 @@ void *xts_big(uint32_t bytes, uint64_t *addr)
       big_raw = malloc((size_t)want + 0x10000);
       if (!big_raw) continue;
       big = (uint8_t *)(((uintptr_t)big_raw + 0xFFFF) & ~(uintptr_t)0xFFFF);
-      if (!xts_plat_is_host() && (uintptr_t)big + want > xts_plat_heap_limit()) {   /* never grow into the crash page */
+      if (!xts_plat_is_host() && (uintptr_t)big + want > xts_plat_heap_limit()) {   /* never grow past the heap limit (stacks above) */
         free(big_raw);
         big_raw = big = NULL;
         continue;
@@ -251,25 +251,43 @@ int xts_prep(uint32_t base, uint32_t nelem, uint32_t stride, int mode, int ncycl
   return 0;
 }
 
-/* ---- semantic DSI guard ----
- * A data storage interrupt is fatal on the console (libxenon's handler -> crash path): never execute a word the model
- * predicts DSI for, and for a memory word the model cannot simulate, execute it only if its effective address (from the
- * input state: (RA|0) + RB or + d/ds, 32-bit in SF=0) and a conservative access window lie inside the scratch area or the
- * big buffer. Returns 1 (with `why`) if the word must not run. Used by xts_semantic_check and the exec families' kernel
- * oracle (one word inside a kernel). */
-static int within(uint64_t lo, uint64_t hi, uint64_t base, uint64_t size) { return size && lo >= base && hi <= base + size; }
+/* ---- memory guard ----
+ * A stray access on the console is not only a data storage interrupt (fatal: libxenon's handler -> crash path): a load can
+ * hit MMIO in libxenon's map (0xC flash, 0xD/0xE PCI registers including the USB controller), a store or dcbz corrupts
+ * whatever lives there, and xdcbt at a wild address is a known 360 coherency hazard. So every memory-unit word is
+ * range-checked against its access window, whatever the model says (a CPU revision might execute a word the model calls
+ * illegal): the EA, from the input state ((RA|0) + RB or + d/ds, 32-bit in SF=0), and a conservative window must lie inside the
+ * scratch area or the big buffer. Windows: cache-block ops (dcb*, icbi, xdcbt) the 128-byte line; dst/dstst touch nothing but
+ * their base RA must be in range (RB is the stream control word, not an address); lsw/stsw/lmw/stmw up to 128 bytes;
+ * lv... and stv... the aligned 16 bytes; everything else the access size (1/2/4/8 bytes) at the EA. A word whose RA field is 0 in a form that is not RA|0
+ * (invalid update forms) is checked under both readings, "r0" and "0". */
+static int within(uint64_t lo, uint64_t hi, uint64_t base, uint64_t size) { return size && hi > lo && lo >= base && hi <= base + size; }
 
-int xts_exec_mem_guard(int id, uint32_t word, const xts_state_t *in, int model_result, uint64_t fault_ea, char *why,
-                       int why_size)
+static int starts(const char *n, const char *p) { return !strncmp(n, p, strlen(p)); }
+
+/* bytes a scalar/FP load or store touches, from the mnemonic (lbz/stb 1, lhz/lha/lhbrx/sth 2, lwz/lwa/lwarx/stwcx/lfs/stfiwx/eciwx 4,
+ * ld/ldarx/stdcx/lfd/stfd/ldbrx 8); anything unrecognised gets 8 */
+static int scalar_size(const char *n)
 {
-  const xts_insn_t *d = xts_insn(id);
-  if (model_result == XTS_M_DSI) {
-    snprintf(why, why_size, "model predicts DSI at %llX: not executed (a DSI crashes the console)",
-             (unsigned long long)fault_ea);
-    return 1;
+  if (starts(n, "eci") || starts(n, "eco")) return 4;
+  int k = starts(n, "st") ? 2 : (n[0] == 'l' ? 1 : -1);
+  if (k < 0) return 8;
+  switch (n[k]) {
+  case 'b': return 1;
+  case 'h': return 2;
+  case 'w': return 4;
+  case 'd': return 8;
+  case 'f': return n[k + 1] == 's' || n[k + 1] == 'i' ? 4 : 8;
+  default: return 8;
   }
-  if (model_result != XTS_M_UNIMPLEMENTED || !d) return 0;
-  if (d->unit != XTS_UNIT_MEMORY && !((d->implicit_r | d->implicit_w) & XTS_IMP_MEM)) return 0;
+}
+
+/* one reading of the word: r0_for_ra0 = 1 uses GPR[0] for an RA field of 0 that the descriptor does not mark as RA|0 */
+static int ea_window1(const xts_insn_t *d, uint32_t word, const xts_state_t *in, int r0_for_ra0, uint64_t *ea_out,
+                      uint64_t *lo, uint64_t *hi, int *ambiguous)
+{
+  const char *n = d->asm_name ? d->asm_name : d->mnem;
+  int stream = starts(n, "dst");                       /* dst, dstst (and dstt/dststt spellings): base RA only */
   int addr = 0;
   uint64_t ea = 0;
   for (int i = 0; i < d->nops; i++) {
@@ -277,25 +295,95 @@ int xts_exec_mem_guard(int id, uint32_t word, const xts_state_t *in, int model_r
     int64_t v = xts_field_get(o->field, word);
     if (!strcmp(o->name, "RA") || !strcmp(o->name, "RA0")) {          /* base: (RA|0) */
       addr = 1;
-      if (!(o->cls == XTS_OC_GPR0 && v == 0)) ea += in->gpr[v & 31];
+      if (o->cls == XTS_OC_GPR0 && v == 0) continue;
+      if (v == 0) {
+        if (ambiguous) *ambiguous = 1;
+        if (!r0_for_ra0) continue;
+      }
+      ea += in->gpr[v & 31];
     } else if (!strcmp(o->name, "RB")) {
       addr = 1;
-      ea += in->gpr[v & 31];
+      if (!stream) ea += in->gpr[v & 31];
     } else if (o->cls == XTS_OC_DISP) {
       ea += (uint64_t)v;
     }
   }
-  if (!addr) return 0;                                 /* no address operands (barriers): nothing to range-check */
+  if (!addr) return 0;                                 /* no address operands (dss, barriers): nothing to range-check */
   if (!(in->mode & XTS_MODE_SF)) ea = (uint32_t)ea;
-  const char *n = d->asm_name ? d->asm_name : d->mnem;
-  uint64_t lo, hi;
-  if (!strncmp(n, "dcb", 3) || !strncmp(n, "icb", 3)) { lo = ea & ~127ull; hi = lo + 128; }        /* cache blocks */
-  else if (!strncmp(n, "lsw", 3) || !strncmp(n, "stsw", 4) || !strncmp(n, "lmw", 3) || !strncmp(n, "stmw", 4)) {
-    lo = ea; hi = ea + 128;                                                                       /* up to 32 words */
-  } else { lo = ea & ~15ull; hi = lo + 16; }                                                      /* <= 16 bytes */
-  if (within(lo, hi, xts_scratch_addr(), XTS_SCRATCH_BYTES)) return 0;
-  if (xts_big_size() && within(lo, hi, xts_exec_big_addr(xts_big_ptr_internal()), xts_big_size())) return 0;
-  snprintf(why, why_size, "model cannot simulate %s and its EA %llX is outside the scratch area and the big buffer: "
-           "not executed (a DSI crashes the console)", d->mnem, (unsigned long long)ea);
+  if (starts(n, "dcb") || starts(n, "icb") || starts(n, "xdcb")) { *lo = ea & ~127ull; *hi = *lo + 128; }  /* cache blocks */
+  else if (stream) { *lo = ea & ~15ull; *hi = *lo + 16; }
+  else if (starts(n, "lsw") || starts(n, "stsw") || starts(n, "lmw") || starts(n, "stmw")) { *lo = ea; *hi = ea + 128; }
+  else if (starts(n, "lv") || starts(n, "stv")) { *lo = ea & ~15ull; *hi = *lo + 16; }                 /* AltiVec: aligned 16 */
+  else { *lo = ea; *hi = ea + (uint64_t)scalar_size(n); }
+  *ea_out = ea;
   return 1;
+}
+
+int xts_exec_ea_window(int id, uint32_t word, const xts_state_t *in, uint64_t *ea, uint64_t *lo, uint64_t *hi)
+{
+  const xts_insn_t *d = xts_insn(id);
+  uint64_t e, l, h;
+  if (!d || (d->unit != XTS_UNIT_MEMORY && !((d->implicit_r | d->implicit_w) & XTS_IMP_MEM))) return 0;
+  int amb = 0;
+  if (!ea_window1(d, word, in, 0, &e, &l, &h, &amb)) return 0;
+  if (ea) *ea = e;
+  if (lo) *lo = l;
+  if (hi) *hi = h;
+  return 1;
+}
+
+static int in_test_memory(uint64_t lo, uint64_t hi)
+{
+  if (within(lo, hi, xts_scratch_addr(), XTS_SCRATCH_BYTES)) return 1;
+  return xts_big_size() && within(lo, hi, xts_exec_big_addr(xts_big_ptr_internal()), xts_big_size());
+}
+
+static int ea_outside_id(int id, uint32_t word, const xts_state_t *in, char *why, int why_size)
+{
+  const xts_insn_t *d = xts_insn(id);
+  if (!d || (d->unit != XTS_UNIT_MEMORY && !((d->implicit_r | d->implicit_w) & XTS_IMP_MEM))) return 0;
+  int amb = 0;
+  for (int pass = 0; pass < 2; pass++) {
+    uint64_t ea, lo, hi;
+    if (!ea_window1(d, word, in, pass, &ea, &lo, &hi, &amb)) return 0;
+    if (!in_test_memory(lo, hi)) {
+      if (why && why_size > 0)
+        snprintf(why, why_size, "EA outside test memory: %s EA %llX window [%llX,%llX) is outside the scratch area and the big "
+                 "buffer: not executed (a stray access could hit MMIO or crash the console)", d->mnem, (unsigned long long)ea,
+                 (unsigned long long)lo, (unsigned long long)hi);
+      return 1;
+    }
+    if (!amb) break;                                   /* only the invalid RA = 0 forms have a second reading */
+  }
+  return 0;
+}
+
+int xts_exec_ea_outside(uint32_t word, const xts_state_t *in, char *why, int why_size)
+{
+  return ea_outside_id(xts_decode1(word), word, in, why, why_size);
+}
+
+/* Used by the backends' xts_exec_word: refuse (status NOTRUN, x->err) a single memory word whose window leaves test memory. */
+int xts_exec_word_assert(xts_exec_t *x, uint32_t word)
+{
+  char why[200];
+  if (!ea_outside_id(xts_decode1(word), word, &x->in, why, sizeof why)) return 0;
+  snprintf(x->err, sizeof x->err, "%s", why);
+  x->status = XTS_EXEC_NOTRUN;
+  return -1;
+}
+
+/* ---- semantic guard ----
+ * Never execute a word the model predicts DSI for (fatal on the console), and no memory word whose access window leaves test
+ * memory, whatever the model returned. Returns 1 (with `why`) if the word must not run. Used by xts_semantic_check and the exec
+ * families' kernel oracle (one word inside a kernel), and callable by any family that runs a memory word itself. */
+int xts_exec_mem_guard(int id, uint32_t word, const xts_state_t *in, int model_result, uint64_t fault_ea, char *why,
+                       int why_size)
+{
+  if (model_result == XTS_M_DSI) {
+    snprintf(why, why_size, "model predicts DSI at %llX: not executed (a DSI crashes the console)",
+             (unsigned long long)fault_ea);
+    return 1;
+  }
+  return ea_outside_id(id, word, in, why, why_size);
 }

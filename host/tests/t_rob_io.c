@@ -120,7 +120,7 @@ HTEST(rob_early_log_buffered)
   HT_EQ_U64(boot(root), 0);
   snprintf(cmd, sizeof cmd, "%s/xts/host/0001/run.log", root);
   log = ht_slurp(cmd);
-  HT_CHECK(log && strstr(log, "watchdog: OFF") && strstr(log, "crash page: survived="));
+  HT_CHECK(log && strstr(log, "watchdog: OFF") && strstr(log, "previous boot: new run"));
 }
 
 /* a record with a ~15 KB detail (the timing emitter allows 16 KB) is written whole and read back intact */

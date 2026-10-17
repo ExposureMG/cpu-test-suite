@@ -101,52 +101,113 @@ There is deliberately no `fpscr_ni` axis: FPSCR[NI] cannot be set on Xenon.
 | `PROFILE=<p>` | which profile is linked (one ELF per profile) |
 | `WATCHDOG=1` | hang watchdog on PIR 4: no progress for 120 s -> SMC reboot -> XeLL reloads `xenon.elf` -> the journal resumes. Unattended full runs. |
 | `SPEED_RISKY=1` | lets the `speed` axis change the CPU speed code |
+| `USB_FIX=0` | link libxenon's own USB mass-storage driver instead of the patched copy (`third_party/libxenon-usb`, default `USB_FIX=1`) |
 | `BUILD=<dir>` | isolated output directory |
 
 Changing an option rebuilds everything (flag stamp in `$(BUILD)/.options`).
 
 ## First console run
 1. `make PROFILE=smoke && make usb USB=...` and boot. The startup screen shows the USB device, the volume label, free
-   space and watchdog ON/OFF; the run ends with "run finished". On the stick, check that:
-   - `summary.json` has `"write_errors":0`;
+   space and watchdog ON/OFF; the run ends with "run finished ... stick unmounted: safe to power off" (shown only after
+   the final flush and unmount). On the stick, check that:
+   - `summary.json` has `"write_errors":0` and `"guard_violations":0`;
    - every `self.*` record passed;
-   - `run.log` has flush times.
-2. `smoke_crash`: the screen shows "XTS CRASH vector 0700", and `journal.txt` ends with a `CRASH ... case=3` line. Reboot
-   and boot the same ELF: it resumes, quarantines case 3 and finishes. `sysinfo_boot2.json` `crashpage_survived` says
-   whether the crash page survives a reboot.
+   - `run.log` has a `flush:` line per block (flush time + breadcrumb count/time) and, at the end, the
+     `breadcrumbs (progress.bin, ...)` line with the per-kind cost and `run end: ... unmount`;
+   - `crash.json` and `progress.bin` exist in the run directory (`crash.json` says `"state":"armed"`);
+   - on a PC: `python3 tools/fat_check.py <image of the stick>` (or `fsck.fat -n /dev/sdX`) reports no errors.
+2. `smoke_crash`: rows 0-5 of the screen show "XTS CRASH vector 0700 ...", the case (`self.crash` case 3 "crash"),
+   "report saved to uda:/xts/<tag>/<run>/crash.json" and "stick is safe to reset". Copy the stick (or look at it on a
+   PC): `crash.json` is valid JSON with `"state":"crashed"`, the registers, the case and the last 50 log lines, and
+   `fat_check.py` is clean. Reset and boot the same ELF: it resumes, records the crash (`failures.jsonl`, detail
+   `crash_report`), quarantines case 3, finishes and unmounts.
 3. `semantic`: every `fail` is either a model bug or a new hardware fact. Divide by zero, 32-bit-mode carry/overflow,
    lmw/string ops and the d3d/vmsum gaps are model guesses waiting for this run; `failures.jsonl` has the state diffs.
 4. `timing`: check the anchors (dependent add 2, fadd 10, vaddfp 12) and the `calib` cycles-per-tick record.
 5. `sched`, `mem`, then `smt` (the sibling/park/other-core code has never run on hardware; watch for `lost` threads).
 
 ## Robustness
-- **USB:** at start a probe file is written, read back and removed. If that fails the run halts with "FAT32 (MBR) USB
-  stick required". The sinks and the journal stay open; each block ends with fflush + fsync. Every I/O error is counted
-  (`write_errors` in summary.json, first errors on screen), and run.log gets the flush time per block.
-- **Journal:** `journal.txt` gets `BEGIN`/`END` per block. A boot that finds a `BEGIN` without an `END` names the case
-  from (in order):
-  1. the crash page;
-  2. a `CRASH` line the crash path wrote;
-  3. the last `CASE` line.
-  It then quarantines only that case. A block with no named case is re-run once (`RETRY`) with a `CASE` line before every
-  case, so a second hang names it.
-- **Crash path:** an interrupt outside the case being run goes through libxenon's handler to `crashdump`. There it gets a
-  per-thread emergency stack and its r2/r13. It writes the crash page (EA 0x9D000000, clear of XeLL's load area) and,
-  when no file operation was in progress, a journal `CRASH` line. Crashes on other hardware threads get their own slots.
-  `sysinfo.json` records whether the page survived the reboot (`crashpage_survived`).
+- **The stick is consistent whenever test code runs.** Records and log lines of the current block stay in RAM. At
+  each block boundary XTS writes them, fsyncs every file and calls `fatFlush` (both FAT copies, FSInfo, every dirty
+  cache page) - only then do the next block's cases start. While cases run no file is written at all: a sink, journal
+  or file call attempted then is refused, counted (`summary.json` `guard_violations`) and logged as `BUG:`. If a
+  block's buffered output grows past 1.5 MB, the chunk is written at the next case boundary (journal `PART`).
+- **Report files**, created per run at a boundary while storage is healthy and then located on the device:
+  - `crash.json` (64 KB): valid JSON at all times. Every 512-byte sector starts with `"slot_NNN":"<16-char magic>"`
+    and is padded with spaces; the crash path only rewrites sectors that still hold the magic. `"state":"armed"` =
+    nothing happened; `"state":"crashed"` = a report: `kind` (`main` = PIR 0, `thread` = another hardware thread),
+    `block`, `case_index`/`case_rel`/`case_id`, `phase`, `outcome`, `vector`, `srr0`, `srr1`, `dar`, `dsisr` (0x300 /
+    0x600), `lr`, `ctr`, `cr`, `xer`, `pir`, `r0`..`r31`, family / mnemonic / seed, the last executed `word` with its
+    input registers `in_r0`.. (self/semantic families), other threads `thr<N>_*`, storage state, `build_id`, and the
+    last 50 run.log lines `log_0`... Ignore the `slot_NNN` members. Read it with any JSON parser.
+  - `progress.bin` (one sector, also JSON): the breadcrumb, rewritten raw before every case of self/semantic families
+    (every 16th case of timing/sched/mem/smt/calib families - `CFLAGS_EXTRA=-DXTS_CRUMB_EVERY_TIMING=<n>`, 0 = block
+    start only; one verified sector write each, cost per family kind in `run.log` and `summary.json`): run, boot,
+    block, case, family, mnemonic, `every`, seq, timebase. After a hang it names the case that was running (with
+    `"every":1`; sparse breadcrumbs make the next boot re-run the block case by case first).
+- **Crash path** (unhandled exception: libxenon's handler -> `crashdump` -> emergency stack): no libfat, no malloc, no
+  stdio, never a flush or unmount. If the USB driver / storage code was in the middle of an operation, the stick is
+  not touched ("report NOT saved ... check the stick"); otherwise the report goes into `crash.json` through the disc
+  guard's verified raw sector writes, sector 0 last. The screen (rows 0-5) says where the report is and whether the
+  stick is safe to reset. Crashes on other hardware threads are kept in RAM; PIR 0 writes them into `crash.json` at its
+  next case boundary and records them at the block end.
+- **Resume** (`journal.txt` has `BEGIN`/`END` per block, written at boundaries only): a `BEGIN` without `END` becomes a
+  `crash` record (case named by `crash.json`) or a `hang` record (case named by `progress.bin`), with the report /
+  breadcrumb in `detail`, and only that case is quarantined. A block with no named case is re-run once (`RETRY`) with a
+  breadcrumb before every case, so a second hang names it. The next boot copies `crash.json` to
+  `crash_boot<N>.json`, journals `REPORT tb=...` (never ingested twice) and re-arms both files.
+- **Storage (see "Storage" below):** every sector libfat reads is read twice and compared, every sector it writes is
+  read back; the first storage error stops all writing and the run, with "STORAGE ERROR ... stop using this stick until
+  it has been checked" on screen. At start a probe file is written, read back and removed. If that fails the run halts
+  with "FAT32 (MBR) USB stick required". Every I/O error is counted (`write_errors` in summary.json, first errors on
+  screen). The run ends with `fatFlush` + `fatUnmount`; halts after storage set-up flush and unmount too when storage
+  is healthy.
 - **Inside a case:** a program or alignment interrupt is recorded and execution resumes after it. Words the model
   predicts would take a data-storage interrupt are never executed (a DSI is fatal). Memory words the model cannot
-  simulate run only if their address is inside the scratch area or the big buffer.
+  simulate run only if their address is inside the scratch area or the big buffer. SMT load kernels (other hardware
+  threads) only touch their own buffers: their addresses are range-checked before every launch (`src/smt/smt.c`).
 - **Screen:** a status line at most once a second (block, family, counts, write errors, watchdog), plus errors.
-  `run.log` holds the full log.
+  `run.log` holds the full log; everything on screen is also in `run.log` or the records, except what the crash path
+  shows when it could not write safely.
 - **Unattended runs:** build with `WATCHDOG=1`. The watchdog is kicked after every case and every execution, with a
   timeout of 120 s (600 s for mem/smt families). On a stall it reboots through the SMC, XeLL reloads `xenon.elf`, and
   the journal resumes.
 
+## Storage
+A smoke run once crashed and corrupted the FAT32 stick it wrote to (a directory cluster partly overwritten by another
+cluster's data and a USB command block, FAT #1 != FAT #2, the new `xts` entry pointing to a free cluster). The storage
+path is now:
+
+```
+core sinks / journal --stdio--> libfat (third_party/libfat, patched) --> disc guard (src/plat/disc_guard.c) --> USB driver (third_party/libxenon-usb, patched)
+```
+- **USB driver** (`USB_FIX=1`): transfer errors and short transfers trigger bulk-only reset recovery and a fresh command
+  instead of continuing with stale state; a halted transfer no longer executes `trap` (a crash inside the driver);
+  retries are bounded. Details and the bug analysis: `third_party/libxenon-usb/XTS-PATCHES.md`.
+- **libfat**: a failed cache-page load drops the page; FAT #2 is kept in sync; FSInfo is written on every sync; a failed
+  FAT read is no longer taken for a free cluster; deleted directory slots are reused correctly; FAT pages are written
+  before directory/data pages. Details: `third_party/libfat/XTS-PATCHES.md`.
+- **Disc guard**: double read + compare, write + read-back; the first failure latches "poisoned": no further write
+  reaches the stick, XTS stops, the screen says STORAGE ERROR. `run.log` ends with the guard's numbers and
+  `summary.json` has a `"storage"` object (sectors read/written, retries, time spent).
+- The stick is mounted once, as before named `uda:` (`udb:`/`udc:` for other ports); `sysinfo.json` records
+  `usb_driver`, `disc_guard` and `usb_sector_size`.
+
+After a STORAGE ERROR, or a crash whose screen says the stick may need a check, check it on a PC before using it again:
+Windows `chkdsk X: /f`, Linux `fsck.fat -n /dev/sdX` (read-only), or make an image (`dd if=/dev/sdX of=stick.img`,
+read-only on the stick) and run `python3 tools/fat_check.py stick.img`. Doing that after the first runs of a new build
+is a good habit anyway.
+
+PC-side tools: `tools/fat_mkimage.py` (FAT32 images like the stick, superfloppy or MBR, optionally pre-populated),
+`tools/fat_check.py` (read-only checker: FAT copies, chains, cross-links, lost clusters, FSInfo, pre-existing files
+byte-identical), `make host-fatreplay` (the storage stack on images with injected USB faults, upstream vs patched).
+
 ## Host side
 ```sh
-make host-test                     # unit tests incl. journal resume with simulated hang/crash (forked "boots")
+make host-test                     # unit tests incl. resume after simulated hangs/crashes (forked "boots"; FAT images)
 make host-dryrun PROFILE=semantic  # run a profile on the PC: every case, every kernel encoded and decoded back
+make host-fatreplay                # the console's storage stack on FAT32 images with injected USB faults (a few minutes)
+XTS_HOST_STORAGE=image:stick.img build/host/xts-dryrun-smoke   # a dry run writing through libfat into an image
 make check                         # check_encoder (all 484 insns vs xenon-as), check_model (results4), check_illegal
 python3 tools/xts_merge.py <run dirs...> -o merged/        # merge runs from one or more consoles
 python3 tools/xts_schedmodel.py merged/merged.jsonl -o model/ --td   # scheduling model (JSON/CSV + LLVM .td sketch)
@@ -160,7 +221,7 @@ ignored (a stale `/sdk/xenon` is common); pass it on the make command line to ov
 ## Layout
 ```
 include/xts/      public interface (frozen for Phase B; see CONTRIBUTING.md)
-src/core/         run driver, registry, scheduler, sinks, journal, sysinfo, crash page        (framework)
+src/core/         run driver, registry, scheduler, sinks, journal, sysinfo, crash reports     (framework)
 src/exec/         state image, slot/vectors, kernel JIT, semantic oracle, big buffer           (framework)
 src/enc/          encoder/decoder over the generated table                                     (framework)
 src/timing/       measurement engine                                                           (framework)
@@ -173,5 +234,6 @@ profiles/         one file per profile
 tools/            gen_isa.py, gen_slot.py, check_*.py, xts.lds, bootstrap.sh, usb_install.sh
 host/             host-only programs (enc CLI, model replay, dry run, unit tests)
 isa/              vendored xenon_isa.json + SOURCE
-third_party/      SoftFloat 3e with a PowerPC specialization (XTS-PowerPC.md)
+third_party/      SoftFloat 3e with a PowerPC specialization (XTS-PowerPC.md); libfat and the libxenon USB storage
+                  driver, vendored with patches (XTS-PATCHES.md in each)
 ```

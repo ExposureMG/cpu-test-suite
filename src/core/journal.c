@@ -1,15 +1,18 @@
 /* Run journal (journal.txt): one line per event, appended durably (the file stays open for the run; every line is
- * fflush'ed + fsync'ed) BEFORE a block starts and after it ends, so a hang, crash or power cut leaves a BEGIN without END
- * that the next boot turns into a hang/crash record.
+ * fflush'ed + fsync'ed) at block boundaries only - BEFORE a block's cases start and after they end - so a hang, crash or
+ * power cut leaves a BEGIN without END that the next boot turns into a hang/crash record. Nothing is written to it while
+ * cases run or from the crash path (the case is named by crash.json / progress.bin, src/core/slot.c).
  *
  *   START <profile> <build_id>        run created
  *   BOOT <n>                          a later boot resumed the run
  *   BEGIN <key>                       block about to run
  *   END <key> seq=<n>                 block done; n = last record seq
  *   QUAR <key> case=<i> status=<s>    case i (relative to the block, -1 = whole block) quarantined after a hang/crash
- *   RETRY <key>                       the block hung/crashed without a named case: re-run once with CASE lines
- *   CASE <key> <i>                    (re-run mode) case i is about to run; -1 = all cases done
- *   CRASH <key> case=<i> vec=<v> srr0=<a> dar=<a>   unhandled exception on PIR 0 inside case i (written by the crash path)
+ *   RETRY <key>                       the block hung/crashed without a named case: re-run once with a progress.bin
+ *                                     breadcrumb before every case
+ *   PART <key> k=<n> seq=<s>          the block's buffer filled: cases 0..n-1 were written at a case boundary (a re-run
+ *                                     of the block starts at case n)
+ *   REPORT tb=<t>                     the crash.json report with "tb":<t> has been turned into records (not again)
  *   CPT <cycles per tick>             calibration scale (survives a resume)
  *   DONE                              run finished
  */
@@ -59,8 +62,6 @@ static xts_jentry_t *get(xts_journal_t *j, const char *key, int create)
   }
   xts_jentry_t *e = &j->e[j->n++];
   memset(e, 0, sizeof *e);
-  e->last_case = -2;
-  e->crash_case = -1;
   snprintf(e->key, sizeof e->key, "%s", key);
   if (2 * j->n > j->hcap) rehash(j, j->hcap ? j->hcap * 2 : 512);
   else {
@@ -84,26 +85,25 @@ static void apply_line(xts_journal_t *j, char *line)
     if (v > 0) { j->cpt = v; j->has_cpt = 1; }
     return;
   }
+  if (!strcmp(cmd, "REPORT")) {
+    const char *t = strstr(line, "tb=");
+    if (t) snprintf(j->report_tb, sizeof j->report_tb, "%.23s", t + 3);
+    return;
+  }
   if (!strcmp(cmd, "BEGIN")) {
     xts_jentry_t *e = get(j, key, 1);
-    if (e) { e->begun++; e->open = 1; e->last_case = -2; e->has_crash = 0; }
+    if (e) { e->begun++; e->open = 1; }
   } else if (!strcmp(cmd, "RETRY")) {
     xts_jentry_t *e = get(j, key, 1);
     if (e) { e->retry = 1; e->open = 0; }
-  } else if (!strcmp(cmd, "CASE")) {
+  } else if (!strcmp(cmd, "PART")) {
     xts_jentry_t *e = get(j, key, 1);
-    const char *s = line + 5 + strlen(key);
-    if (e && *s == ' ') e->last_case = atoi(s + 1);
-  } else if (!strcmp(cmd, "CRASH")) {
-    xts_jentry_t *e = get(j, key, 1);
-    const char *c = strstr(line, " case="), *v = strstr(line, " vec="), *a = strstr(line, " srr0="), *d = strstr(line, " dar=");
-    if (e) {
-      e->has_crash = 1;
-      e->crash_case = c ? atoi(c + 6) : -1;
-      e->crash_vec = v ? (uint32_t)strtoul(v + 5, NULL, 16) : 0;
-      e->crash_srr0 = a ? strtoull(a + 6, NULL, 16) : 0;
-      e->crash_dar = d ? strtoull(d + 5, NULL, 16) : 0;
+    const char *k = strstr(line, " k="), *s = strstr(line, " seq=");
+    if (s) {
+      unsigned long long v = strtoull(s + 5, NULL, 10);
+      if (v > j->max_seq) j->max_seq = v;
     }
+    if (e && k) e->part_k = atoi(k + 3);
   } else if (!strcmp(cmd, "END")) {
     xts_jentry_t *e = get(j, key, 1);
     const char *s = strstr(line, "seq=");
@@ -111,7 +111,7 @@ static void apply_line(xts_journal_t *j, char *line)
       unsigned long long v = strtoull(s + 4, NULL, 10);
       if (v > j->max_seq) j->max_seq = v;
     }
-    if (e) { e->ended++; e->open = 0; }
+    if (e) { e->ended++; e->open = 0; e->part_k = 0; }
   } else if (!strcmp(cmd, "QUAR")) {
     xts_jentry_t *e = get(j, key, 1);
     const char *s = strstr(line, "case=");
@@ -146,7 +146,7 @@ void xts_journal_close(xts_journal_t *j)
   xts_pf_close(&j->pf);
 }
 
-/* durable: written + fflush + fsync before the caller goes on (BEGIN before the block, CASE before the case) */
+/* durable: written + fflush + fsync before the caller goes on (BEGIN before the block's cases, END after them) */
 int xts_journal_raw(xts_journal_t *j, const char *line, size_t n)
 {
   if (!j->pf.f && !j->pf.path[0]) snprintf(j->pf.path, sizeof j->pf.path, "%s", j->path);
@@ -166,17 +166,24 @@ int xts_journal_line(xts_journal_t *j, const char *line)
   return r;
 }
 
-int xts_journal_case(xts_journal_t *j, const char *key, int case_rel)
-{
-  char l[220];
-  snprintf(l, sizeof l, "CASE %s %d", key, case_rel);
-  return xts_journal_line(j, l);
-}
-
 int xts_journal_retry(xts_journal_t *j, const char *key)
 {
   char l[220];
   snprintf(l, sizeof l, "RETRY %s", key);
+  return xts_journal_line(j, l);
+}
+
+int xts_journal_part(xts_journal_t *j, const char *key, int k, uint64_t seq)
+{
+  char l[260];
+  snprintf(l, sizeof l, "PART %s k=%d seq=%llu", key, k, (unsigned long long)seq);
+  return xts_journal_line(j, l);
+}
+
+int xts_journal_report(xts_journal_t *j, uint64_t tb)
+{
+  char l[64];
+  snprintf(l, sizeof l, "REPORT tb=%llu", (unsigned long long)tb);
   return xts_journal_line(j, l);
 }
 

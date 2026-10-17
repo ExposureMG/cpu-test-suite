@@ -1,6 +1,16 @@
 /* src/smt common part (console and host): thread state machine with timeouts, JIT load kernels, the SMT exec hooks,
  * per-block info records, the speed-change precondition and the watchdog logic. Hardware access goes through the backend
- * (smt_console.c: libxenon; smt_host.c: a simulation so the host dry run walks the same code). */
+ * (smt_console.c: libxenon; smt_host.c: a simulation so the host dry run walks the same code).
+ *
+ * Memory safety of the load kernels: they run on other hardware threads, outside the exec engine, so the memory guard
+ * (xts_exec_mem_check, which bounds every case's accesses to the scratch area / big buffer) does not see them. Every
+ * address they use is computed here via smtb_addr() and checked before a launch (check_load_ranges): the thread's own
+ * TCB, its own 4 KB L1 buffer (busy_ld: bytes 0..0x387), its own slice of the 4 MB sibling buffer
+ * (busy_mem: the whole pointer chain is walked and every pointer must stay inside), its own slice of the shared core
+ * buffer (l2_pressure: chain walked, load + store at +64 inside the slice; mem_stream: [k_ptr, k_end) inside the
+ * buffer, a whole number of 32 KB outer iterations so the wrap lands on k_end exactly), and same_insn words must pass
+ * xts_smt_same_words again (no memory, branch, SPR or LR/CTR access). A failed check logs "smt: RANGE ASSERTION" and
+ * refuses the load (XTS_SMT_E_BUILD: the block is recorded as skip). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -294,6 +304,67 @@ static int prep_buffers(int pir, int load, int slice, int nslices)
   return 0;
 }
 
+/* ---- range assertions (see the top of the file) ---------------------------------------------------------------------- */
+static unsigned range_failures;
+static int in_range(int pir, const char *what, uint32_t addr, uint32_t len, uint32_t lo, uint32_t size)
+{
+  uint32_t off = addr - lo;                         /* mod 2^32: below lo wraps to a huge offset */
+  if (len <= size && off <= size - len) return 1;
+  range_failures++;
+  xts_log("smt: RANGE ASSERTION failed: PIR %d %s [%08X, +%u) is outside its buffer [%08X, +%u): load refused", pir, what,
+          (unsigned)addr, (unsigned)len, (unsigned)lo, (unsigned)size);
+  return 0;
+}
+
+/* walk a pointer chain (big-endian u64 at line offset 0, as xts_prep_pure wrote it) for `steps` loads: every pointer
+ * (load of 8 bytes, plus `extra` bytes touched at +touch_off) must stay in [lo, lo + size) */
+static int chain_ok(int pir, const char *what, const uint8_t *buf, uint32_t buf_addr, uint32_t start, uint32_t steps,
+                    uint32_t lo, uint32_t size, uint32_t touch_end)
+{
+  uint32_t p = start;
+  for (uint32_t i = 0; i <= steps; i++) {
+    if (!in_range(pir, what, p, touch_end, lo, size)) return 0;
+    p = (uint32_t)xts_be_load(buf + (p - buf_addr), 8);
+  }
+  return 1;
+}
+
+static int check_load_ranges(int pir, int load, const uint32_t *words, int nwords, int nslices)
+{
+  xts_smt_tcb_t *t = &xts_smt_tcbs[pir];
+  if (!in_range(pir, "tcb", xts_smt_tcbp[pir], TCB_SIZE, smtb_addr(&xts_smt_tcbs[pir]), TCB_SIZE)) return 0;
+  switch (load) {
+  case XTS_SMT_BUSY_LD:   /* lwz rX, (i&7)*128 + (i>>3)*4 (r4 = k_l1buf), i < 16 */
+    return in_range(pir, "busy_ld window", t->k_l1buf, 7 * 128 + 4 + 4, smtb_addr(l1bufs[pir]), sizeof l1bufs[pir]);
+  case XTS_SMT_BUSY_MEM:
+    return sib_mem && chain_ok(pir, "busy_mem chain", sib_mem, smtb_addr(sib_mem), t->k_ptr, MEM_SIB_BYTES / 128,
+                               smtb_addr(sib_mem), MEM_SIB_BYTES, 8);
+  case XTS_SMT_L2_PRESSURE: {
+    uint32_t base = smtb_addr(core_mem), slice_lo = t->k_ptr;
+    uint32_t per = (L2P_BYTES / (uint32_t)(nslices > 0 ? nslices : 1)) & ~127u;
+    if (!core_mem || !in_range(pir, "l2_pressure slice", slice_lo, per, base, CORE_BUF)) return 0;
+    return chain_ok(pir, "l2_pressure chain (ld +0, stw +64)", core_mem, base, t->k_ptr, per / 128, slice_lo, per, 64 + 4);
+  }
+  case XTS_SMT_MEM_STREAM:
+    if (!core_mem || t->k_end <= t->k_ptr || (t->k_end - t->k_ptr) % (64u * 512u)) {
+      in_range(pir, "mem_stream slice (not a whole number of 32 KB iterations)", t->k_ptr, t->k_end - t->k_ptr, 0, 0);
+      return 0;
+    }
+    return in_range(pir, "mem_stream slice", t->k_ptr, t->k_end - t->k_ptr, smtb_addr(core_mem), CORE_BUF);
+  case XTS_SMT_SAME_INSN: {
+    uint32_t keep[64];
+    int fb = 0;
+    if (nwords < 1 || nwords > 64 || xts_smt_same_words(words, nwords, keep, 64, &fb) != nwords) {
+      in_range(pir, "same_insn words (a word is not in the safe subset)", 0, 1, 0, 0);
+      return 0;
+    }
+    return 1;
+  }
+  default:                 /* busy_int / busy_fp / busy_vmx: registers only (busy_fp: two lfd from its own tcb) */
+    return 1;
+  }
+}
+
 /* ---- start / stop ------------------------------------------------------------------------------------------------------ */
 static int start_ex(int pir, int load, const uint32_t *words, int nwords, int slice, int nslices)
 {
@@ -310,6 +381,7 @@ static int start_ex(int pir, int load, const uint32_t *words, int nwords, int sl
   t->code = 0;
   if (load != XTS_SMT_WATCHDOG) {
     if (prep_buffers(pir, load, slice, nslices) < 0) return XTS_SMT_E_BUILD;
+    if (!check_load_ranges(pir, load, words, nwords, nslices)) return XTS_SMT_E_BUILD;
     if (build_kernel(pir, load, words, nwords, &ops) < 0) return XTS_SMT_E_BUILD;
   }
   t->stop = 0;

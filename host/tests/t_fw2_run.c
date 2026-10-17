@@ -19,15 +19,13 @@ static int fin_enum(xts_caselist_t *cl)
 static int leak_pre(xts_exec_t *x, void *ud) { (void)x; (void)ud; return 0; }
 static int fin_run(const xts_case_t *c, xts_ctx_t *ctx)
 {
-  if (ctx->case_index == fin_die_at && xts_cond_value(ctx, "sf") == 1) {
-    if (fin_thread_crash) {
-      uint64_t fake[40] = { 0 };
-      fake[36] = 0x80007777;
-      fake[39] = 3;                              /* PIR 3 crashed while the main thread ran this case */
-      xts_crash_record(0x700, fake);
-    }
-    _exit(9);
+  if (fin_thread_crash && ctx->case_index == fin_die_at - 1 && xts_cond_value(ctx, "sf") == 1) {
+    uint64_t fake[40] = { 0 };
+    fake[36] = 0x80007777;
+    fake[39] = 3;                                /* PIR 3 crashes while the main thread runs this case; main goes on */
+    HT_EQ_U64(xts_crash_handle(0x700, fake, 0), XTS_CRASH_THREAD);
   }
+  if (ctx->case_index == fin_die_at && xts_cond_value(ctx, "sf") == 1) _exit(9);   /* the next case hangs */
   if (fin_leak_hook && ctx->case_index == 0) xts_exec_hook_add(leak_pre, NULL, NULL);   /* never removed */
   fin_runs_this_boot++;
   xts_emit_value(ctx, "count", ctx->case_index, "count", XTS_ST_PASS);
@@ -145,7 +143,8 @@ HTEST(fw2_finish_resume)
   snprintf(root, sizeof root, "%s/fin2", ht_tmp);
   snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
   HT_EQ_U64(system(cmd), 0);
-  /* boot 1 dies in case 3 of the sf=32 combination (block r0:...:sf=32:c1), after PIR 3 crashed */
+  /* boot 1 dies in case 3 of the sf=32 combination (block r0:...:sf=32:c1); PIR 3 crashed during case 2, and PIR 0
+   * wrote that into crash.json (kind "thread") at the case boundary before case 3 */
   HT_EQ_U64(boot(&fin_prof, root, 3, 1, 0), 9);
   HT_EQ_U64(boot(&fin_prof, root, -1, 0, 0), 0);
   snprintf(path, sizeof path, "%s/xts/host/0001/results.jsonl", root);
@@ -158,11 +157,11 @@ HTEST(fw2_finish_resume)
    * (quarantined), the last one run in boot 2 */
   HT_CHECK(strstr(copy, "\"detail\":{\"row\":0,\"blocks\":6,\"ran\":2,\"earlier\":4,\"quar\":1,\"skipped\":0,\"complete\":0,") != NULL);
   HT_CHECK(strstr(copy, "\"status\":\"hang\"") != NULL);
-  /* the PIR 3 crash from boot 1 is a crash record of the block the main thread was in */
+  /* the PIR 3 crash from boot 1 is a crash record of the block the main thread was in (from crash.json) */
   HT_CHECK(strstr(copy, "\"case_id\":\"pir3\"") != NULL);
   int p = pos_of(copy, "\"case_id\":\"pir3\"");
   HT_CHECK(p >= 0 && strstr(copy + p, "\"block\":\"r0:t.fin:sf=32:c1\"") != NULL && strstr(copy + p, "\"status\":\"crash\"") != NULL);
-  HT_CHECK(strstr(copy, "\"srr0\":\"0000000080007777\"") != NULL);
+  HT_CHECK(strstr(copy, "\"thr3_srr0\":\"0000000080007777\"") != NULL && strstr(copy, "\"kind\":\"thread\"") != NULL);
   free(copy);
   snprintf(path, sizeof path, "%s/xts/host/0001/journal.txt", root);
   const char *jl = ht_slurp(path);

@@ -117,8 +117,8 @@ int xts_set_code_ptr(xts_exec_t *x, int reg, int base, int32_t off);
 
 /* ---- scratch / big buffer addresses ---- */
 uint64_t xts_scratch_addr(void);           /* address case code sees for scratch[0] (host: a fixed fake address) */
-/* Big buffer for working-set tests: one region, allocated on first use (64 KB aligned), bounded below the reserved
- * crash page. Returns NULL if `bytes` cannot be provided; the previous size is then still allocated (xts_big_size), but
+/* Big buffer for working-set tests: one region, allocated on first use (64 KB aligned), bounded below
+ * xts_plat_heap_limit (the stacks). Returns NULL if `bytes` cannot be provided; the previous size is then still allocated (xts_big_size), but
  * growing never preserves contents. *addr = address the test code sees. */
 void *xts_big(uint32_t bytes, uint64_t *addr);
 uint32_t xts_big_size(void);               /* bytes currently allocated (0 = none) */
@@ -180,6 +180,13 @@ uint32_t xts_branch_word(uint64_t from, uint64_t to);
  * Returns the record status. `note` (may be NULL) is copied into detail.note. */
 struct xts_ctx;
 int xts_semantic_check(struct xts_ctx *ctx, xts_exec_t *x, uint32_t word, const char *note);
+/* Memory-safety assertion for a single word a family runs itself (xts_exec_word / a one-word kernel) without xts_semantic_check:
+ * returns 1 if `word` is a memory instruction whose access window (cache ops: the 128-byte line; dst/dstst: the base address;
+ * string/multiple: 128 bytes; AltiVec: the aligned 16 bytes; others the 1/2/4/8 bytes they access), computed from the input state `in`, is not
+ * inside the scratch area or the big buffer. `why` ("EA outside test memory: ...") says so; the word must then NOT be run
+ * (record a skip). Returns 0 for non-memory words and for windows inside test memory. xts_semantic_check, xe_check_kernel and
+ * both backends' xts_exec_word apply it already, whatever the model result; the model cannot see the console's MMIO. */
+int xts_exec_ea_outside(uint32_t word, const xts_state_t *in, char *why, int why_size);
 /* Estimate instructions (fres frsqrte vrefp vrsqrtefp vexptefp vlogefp and the 128 forms): where the model has no exact
  * answer (XTS_M_UNIMPLEMENTED: the result needs the hardware table), xts_semantic_check judges the CPU result against the
  * architected accuracy bound instead ("model":"estimate" in the detail):

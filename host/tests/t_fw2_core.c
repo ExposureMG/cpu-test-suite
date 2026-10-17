@@ -141,51 +141,6 @@ HTEST(fw2_isa_aliases)
   HT_CHECK(m && m->nops == 1 && m->ops[0].cls == XTS_OC_FPR && (m->ops[0].role & XTS_ROLE_W));
 }
 
-HTEST(fw2_crash_thread_slots)
-{
-  xts_crashpage_t cp;
-  xts_crash_collect(&cp);                                  /* start clean */
-  xts_crash_breadcrumb("run1", "r0:fam:-:c0", 3, 0, "case3", 17);
-  uint64_t fake[40] = { 0 };
-  fake[1] = 0x1111;
-  fake[32] = 0x2222;
-  fake[36] = 0x80004444;
-  fake[39] = 2;                                            /* PIR 2 */
-  xts_crash_record(0x300, fake);
-  /* the main thread keeps running: new block, new breadcrumbs (they re-initialise the main record) */
-  xts_crash_breadcrumb("run1", "r0:fam:-:c1", 9, 0, "case9", 20);
-  xts_crash_breadcrumb("run1", "r0:fam:-:c1", -1, 0, "", 21);
-  fake[36] = 0x80005555;
-  xts_crash_record(0x700, fake);                           /* a second crash on PIR 2: counted, the first one kept */
-  HT_EQ_U64(xts_crash_collect(&cp), 1);
-  HT_EQ_U64(cp.magic, XTS_CRASH_MAGIC);
-  HT_EQ_U64(cp.crashed, 0);                                /* the main record has no crash */
-  HT_CHECK(!strcmp(cp.block_key, "r0:fam:-:c1"));
-  HT_EQ_U64(cp.thr[1].magic, XTS_CRASH_THR_MAGIC);
-  HT_EQ_U64(cp.thr[1].pir, 2);
-  HT_EQ_U64(cp.thr[1].vector, 0x300);
-  HT_EQ_U64(cp.thr[1].srr0, 0x80004444);
-  HT_EQ_U64(cp.thr[1].count, 2);
-  HT_EQ_U64(cp.thr[1].case_index, 3);
-  HT_CHECK(!strcmp(cp.thr[1].block_key, "r0:fam:-:c0"));
-  HT_EQ_U64(cp.thr[0].magic, 0);
-  HT_EQ_U64(xts_crash_collect(&cp), 0);                    /* collected once */
-  /* a thread crash alone (no breadcrumb) is still reported */
-  xts_crash_record(0x600, fake);
-  HT_EQ_U64(xts_crash_collect(&cp), 1);
-  HT_EQ_U64(cp.magic, 0);
-  HT_EQ_U64(cp.thr[1].vector, 0x600);
-  HT_EQ_U64(cp.thr[1].case_index, (uint64_t)-1);
-  /* PIR 0 still goes to the main record */
-  xts_crash_breadcrumb("run1", "r0:fam:-:c2", 4, 1, "case4", 30);
-  fake[39] = 0;
-  xts_crash_record(0x300, fake);
-  HT_EQ_U64(xts_crash_collect(&cp), 1);
-  HT_EQ_U64(cp.crashed, 1);
-  HT_EQ_U64(cp.case_index, 4);
-  HT_EQ_U64(cp.thr[1].magic, 0);
-}
-
 HTEST(fw2_trap_ranges)
 {
   uint64_t lo, hi;

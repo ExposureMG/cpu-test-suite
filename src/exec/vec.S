@@ -9,7 +9,8 @@
  *
  *   in range:  ctx[36] = SRR0, ctx[37] = SRR1, ctx[80] = vector, ctx[81] = DAR; resume at SRR0+4
  *   otherwise: restore r3/r4/CR and continue exactly like DO_EXCEPT (std r1..r4, li r3,vector, b ex_<handler>)
- *              -> libxenon dumps state -> crashdump (below) -> xts_crash_entry (C): crash record, never FAT.
+ *              -> libxenon dumps state -> crashdump (below) -> xts_crash_entry (C): crash.json via the disc guard's
+ *                 raw API (never libfat), or nothing if storage was busy.
  *
  * Interrupts run with MSR[SF]=1, translation off; only SPRs, GPRs and the context block (real address) are touched.
  * SRR0 is compared on its low 32 bits (cmplw), which is what a case address is in either mode.
@@ -108,11 +109,14 @@ xts_vec_stub_end:
  *   - r1 = top of this PIR's emergency stack (xts_crash_stacks[pir], 16 KB = 1 << 14, src/plat/plat_console.c) - 64,
  *     back chain 0;
  *   - r2 / r13 = the values main() ran with (captured by xts_plat_init: libxenon's crt sets neither and this build uses
- *     no small-data base registers, so they are only restored for safety).
- * Then xts_crash_entry(r3 = vector, r4 = context, r5 = depth before this entry). PIR > 5 cannot happen; clamped to 5. */
+ *     no small-data base registers, so they are only restored for safety);
+ *   - DSISR is read first (r10 -> r6): libxenon's fault path does not save it, and nothing before crashdump changes it.
+ * Then xts_crash_entry(r3 = vector, r4 = context, r5 = depth before this entry, r6 = DSISR). PIR > 5 cannot happen;
+ * clamped to 5. */
 	.globl crashdump
 	.align 4
 crashdump:
+	mfspr 10, 18            /* DSISR */
 	mfmsr 5
 	rldicl 5, 5, 0, 1
 	mtmsrd 5
@@ -145,5 +149,6 @@ crashdump:
 	lis 6, xts_crash_r13@ha
 	lwz 13, xts_crash_r13@l(6)
 	mr 5, 8
+	clrldi 6, 10, 32
 	b xts_crash_entry
 2:	b 2b

@@ -204,6 +204,7 @@ static uint64_t last_kernel_start, last_kernel_bytes;
 int xts_exec_word(xts_exec_t *x, uint32_t word)
 {
   if (x->err[0]) { x->status = XTS_EXEC_NOTRUN; return x->status; }
+  if (xts_exec_word_assert(x, word) < 0) return x->status;      /* memory word with an EA outside test memory: never run */
   xts_slot_insn[0] = word;
   xts_sync_code((void *)xts_slot_insn, 4);
   last_kernel_start = last_kernel_bytes = 0;

@@ -23,9 +23,13 @@ typedef struct xts_trange { uint64_t lo, hi; } xts_trange_t;
 extern xts_trange_t xts_exec_ranges[XTS_EXEC_EXTRA_RANGES];
 /* backend hook called after a range changed (console: re-patch the vector stubs); may be NULL */
 extern int (*xts_exec_ranges_changed)(void);
-/* semantic DSI guard (exec_common.c): 1 = do not execute `word` (model_result XTS_M_DSI, or an unsimulated memory word whose
- * EA is outside scratch/big buffer); `why` says so. model_result / fault_ea: what xts_model_exec returned for the same
- * input (xts_mem_t.fault_ea). */
+/* memory guard (exec_common.c): 1 = do not execute `word`: model_result XTS_M_DSI, or a memory-unit word (whatever the model
+ * said) whose access window leaves the scratch area and the big buffer (see xts_exec_ea_outside in xts/exec.h); `why` says so.
+ * model_result / fault_ea: what xts_model_exec returned for the same input (xts_mem_t.fault_ea). */
 int xts_exec_mem_guard(int id, uint32_t word, const xts_state_t *in, int model_result, uint64_t fault_ea, char *why,
                        int why_size);
+/* the access window of a memory word: 1 and the EA and [lo, hi) of the first reading, 0 if the word touches no memory */
+int xts_exec_ea_window(int id, uint32_t word, const xts_state_t *in, uint64_t *ea, uint64_t *lo, uint64_t *hi);
+/* backend assertion used by xts_exec_word on both backends: 0, or -1 with x->status = XTS_EXEC_NOTRUN and x->err set */
+int xts_exec_word_assert(xts_exec_t *x, uint32_t word);
 #endif

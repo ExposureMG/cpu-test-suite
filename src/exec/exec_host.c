@@ -50,6 +50,7 @@ int xts_exec_word(xts_exec_t *x, uint32_t word)
 {
   xts_dry_stats.words++;
   if (x->err[0]) { x->status = XTS_EXEC_NOTRUN; return x->status; }
+  if (xts_exec_word_assert(x, word) < 0) return x->status;      /* same rule as the console: never run a wild EA */
   x->run_word = word;
   x->run_kernel = NULL;
   x->run_kernel_words = 0;

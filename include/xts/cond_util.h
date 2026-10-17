@@ -27,7 +27,7 @@ enum { XTS_CACHE_DEFAULT = 0, XTS_CACHE_COLD = 1, XTS_CACHE_L1 = 2, XTS_CACHE_L2
 /* Name of a cache_state ("default" "cold" "l1" "l2" "mem"). */
 const char *xts_cond_cache_name(int state);
 /* Make sure the private eviction buffer (4 x L1; 2 x L2 if `want_l2`) exists. 0 ok, <0 not possible (allocation, or it
- * would grow into the crash page). Host: always 0, nothing is allocated. Called by the cache axis apply for l2/mem. */
+ * would grow past xts_plat_heap_limit). Host: always 0, nothing is allocated. Called by the cache axis apply for l2/mem. */
 int xts_cond_evict_init(int want_l2);
 /* Evict everything of L1D / (L1D and L2) by loading an eviction buffer of our own (never overlaps the big buffer). The
  * evicted data is clean; the sweep leaves other lines in L2. Host: no-op. Return 0, <0 if the buffer is unavailable. */

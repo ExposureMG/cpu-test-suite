@@ -7,7 +7,7 @@
  * With -DXTS_WATCHDOG, PIR 4 runs the watchdog and PIR 5 is left alone, so only PIR 2 and 3 carry the load (recorded).
  * Starting threads 2-5 (xenon_thread_startup) and every load start/stop is bounded; a failure -> apply() < 0.
  * Trap-range indexes 1..3 (xts_exec_trap_range) are reserved for this axis but not used: the load kernels are fixed and
- * never trap, and an unhandled interrupt on PIR 1..5 lands in the crash page's own per-PIR slot.
+ * never trap, and an unhandled interrupt on PIR 1..5 lands in its RAM thread slot (PIR 0 writes it to crash.json).
  * Per block an info record (case "smt:other_cores", metric "info") has per-thread iterations, the rate and temperatures.
  */
 #include <stdio.h>

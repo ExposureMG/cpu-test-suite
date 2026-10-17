@@ -34,10 +34,7 @@ int xts_sysinfo_write(const char *path, const char *run_id, const char *tag, int
   xj_kv_str(&j, "console_tag", tag);
   xj_kv_int(&j, "boot", boot);
   xj_kv_double(&j, "cycles_per_tick", xts_cycles_per_tick);
-  xj_key(&j, "crashpage_survived");                /* did the RAM crash page survive the last reboot (main.c) */
-  if (xts_crashpage_survived < 0) xj_null(&j);
-  else xj_bool(&j, xts_crashpage_survived);
-  xj_kv_str(&j, "crashpage_how", xts_crashpage_how);
+  xj_kv_str(&j, "previous_boot", xts_prev_boot_how);   /* what crash.json / progress.bin said at this boot (main.c) */
   xj_key(&j, "families");
   xj_arr(&j);
   for (int i = 0; i < xts_family_count(); i++) xj_str(&j, xts_family_name(xts_family_get(i)));
