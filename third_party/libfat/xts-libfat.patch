@@ -1,0 +1,660 @@
+diff -ru upstream/source/cache.c source/cache.c
+--- upstream/source/cache.c	2026-10-17 13:49:07.729772180 +0100
++++ source/cache.c	2026-10-17 14:37:11.811231378 +0100
+@@ -65,6 +65,8 @@
+ 	}
+ 
+ 	cache->disc = discInterface;
++	cache->fatFirst = 0;
++	cache->fatEnd = 0;
+ 	cache->endOfPartition = endOfPartition;
+ 	cache->numberOfPages = numberOfPages;
+ 	cache->sectorsPerPage = sectorsPerPage;
+@@ -112,6 +114,32 @@
+ }
+ 
+ 
++/*
++XTS-PATCH(libfat-g): dirty FAT pages go to the disc before any other dirty page (directory entries, file data), in
++_FAT_cache_flush and before a dirty non-FAT page is evicted. Upstream wrote pages in slot order, so an interrupted flush
++(crash, power cut, or a write refused after a storage error) could leave a directory entry on the disc that points to a
++cluster still free in the FAT - the next allocation hands that cluster out again (cross-link). With FAT pages first, an
++interruption leaves at most lost clusters, which checkers free without touching any file.
++*/
++static bool _FAT_cache_overlapsFat(CACHE *cache, CACHE_ENTRY *e)
++{
++	return e->sector != CACHE_FREE && e->count && e->sector < cache->fatEnd && e->sector + e->count > cache->fatFirst;
++}
++
++static bool _FAT_cache_flushFat(CACHE *cache)
++{
++	unsigned int i;
++	for (i = 0; i < cache->numberOfPages; i++) {
++		CACHE_ENTRY *e = &cache->cacheEntries[i];
++		if (e->dirty && _FAT_cache_overlapsFat(cache, e)) {
++			if (!_FAT_disc_writeSectors(cache->disc, e->sector, e->count, e->cache))
++				return false;
++			e->dirty = false;
++		}
++	}
++	return true;
++}
++
+ static CACHE_ENTRY* _FAT_cache_getPage(CACHE *cache,sec_t sector)
+ {
+ 	unsigned int i;
+@@ -137,6 +165,9 @@
+ 	}
+ 
+ 	if(foundFree==false && cacheEntries[oldUsed].dirty==true) {
++		/* XTS-PATCH(libfat-a): if the write-back of the victim fails, the victim keeps its sector, its data and its
++		 * dirty flag and its buffer is NOT reused (unchanged from upstream; the call fails). */
++		if(!_FAT_cache_overlapsFat(cache,&cacheEntries[oldUsed]) && !_FAT_cache_flushFat(cache)) return NULL;   // XTS-PATCH(libfat-g)
+ 		if(!_FAT_disc_writeSectors(cache->disc,cacheEntries[oldUsed].sector,cacheEntries[oldUsed].count,cacheEntries[oldUsed].cache)) return NULL;
+ 		cacheEntries[oldUsed].dirty = false;
+ 	}
+@@ -145,7 +176,17 @@
+ 	sec_t next_page = sector + sectorsPerPage;
+ 	if(next_page > cache->endOfPartition)	next_page = cache->endOfPartition;
+ 
+-	if(!_FAT_disc_readSectors(cache->disc,sector,next_page-sector,cacheEntries[oldUsed].cache)) return NULL;
++	if(!_FAT_disc_readSectors(cache->disc,sector,next_page-sector,cacheEntries[oldUsed].cache)) {
++		/* XTS-PATCH(libfat-a): the buffer now holds an unknown mix of the evicted page and the new range. Upstream
++		 * returned NULL but left the entry describing the OLD range, so the next access to the old range was served
++		 * from the mixed buffer and, once modified, written back over it (a directory page partly replaced by another
++		 * cluster's data). Drop the entry. */
++		cacheEntries[oldUsed].sector = CACHE_FREE;
++		cacheEntries[oldUsed].count = 0;
++		cacheEntries[oldUsed].last_access = 0;
++		cacheEntries[oldUsed].dirty = false;
++		return NULL;
++	}
+ 
+ 	cacheEntries[oldUsed].sector = sector;
+ 	cacheEntries[oldUsed].count = next_page-sector;
+@@ -299,6 +340,10 @@
+ bool _FAT_cache_flush (CACHE* cache) {
+ 	unsigned int i;
+ 
++	if (!_FAT_cache_flushFat(cache)) {   // XTS-PATCH(libfat-g): the FAT first
++		return false;
++	}
++
+ 	for (i = 0; i < cache->numberOfPages; i++) {
+ 		if (cache->cacheEntries[i].dirty) {
+ 			if (!_FAT_disc_writeSectors (cache->disc, cache->cacheEntries[i].sector, cache->cacheEntries[i].count, cache->cacheEntries[i].cache)) {
+@@ -311,6 +356,20 @@
+ 	return true;
+ }
+ 
++/*
++XTS-PATCH(libfat-c): a sector written straight to the disc (FSInfo) also replaces its copy in a cached page, so a later
++write-back of that page cannot put the old contents back. The page's dirty flag is left as it is.
++*/
++void _FAT_cache_updateIfCached (CACHE* cache, sec_t sector, const void* buffer) {
++	unsigned int i;
++	for (i = 0; i < cache->numberOfPages; i++) {
++		CACHE_ENTRY* e = &cache->cacheEntries[i];
++		if (e->sector != CACHE_FREE && sector >= e->sector && sector < e->sector + e->count) {
++			memcpy(e->cache + (sector - e->sector) * cache->bytesPerSector, buffer, cache->bytesPerSector);
++		}
++	}
++}
++
+ void _FAT_cache_invalidate (CACHE* cache) {
+ 	unsigned int i;
+ 	_FAT_cache_flush(cache);
+diff -ru upstream/source/cache.h source/cache.h
+--- upstream/source/cache.h	2026-10-17 13:49:07.730422040 +0100
++++ source/cache.h	2026-10-17 14:37:11.810954643 +0100
+@@ -54,6 +54,8 @@
+ 	unsigned int          sectorsPerPage;
+ 	unsigned int          bytesPerSector;
+ 	CACHE_ENTRY*          cacheEntries;
++	sec_t                 fatFirst;     // XTS-PATCH(libfat-g): the FAT region [fatFirst, fatEnd), written before
++	sec_t                 fatEnd;       // any other dirty page (0, 0 until the partition sets it)
+ } CACHE;
+ 
+ /*
+@@ -116,6 +118,11 @@
+ bool _FAT_cache_flush (CACHE* cache);
+ 
+ /*
++XTS: replace the cached copy (if any) of one sector that was written straight to the disc
++*/
++void _FAT_cache_updateIfCached (CACHE* cache, sec_t sector, const void* buffer);
++
++/*
+ Clear out the contents of the cache without writing any dirty sectors first
+ */
+ void _FAT_cache_invalidate (CACHE* cache);
+diff -ru upstream/source/directory.c source/directory.c
+--- upstream/source/directory.c	2026-10-17 13:49:07.729857336 +0100
++++ source/directory.c	2026-10-17 14:25:50.746099105 +0100
+@@ -275,6 +275,8 @@
+ 				} else {
+ 					return false;		// Got to the end of the directory, not extending it
+ 				}
++			} else if (!_FAT_fat_isValidCluster(partition, tempCluster)) {
++				return false;		// XTS-PATCH(libfat-e): unreadable or broken chain: do not walk into cluster 0 / garbage
+ 			}
+ 			position.cluster = tempCluster;
+ 		} else if ((position.cluster == FAT16_ROOT_DIR_CLUSTER) && (position.sector == (partition->dataStart - partition->rootDirStart))) {
+@@ -701,7 +703,14 @@
+ 			_FAT_fat_clusterToSector(partition, gapEnd.cluster) + gapEnd.sector,
+ 			gapEnd.offset * DIR_ENTRY_DATA_SIZE, DIR_ENTRY_DATA_SIZE);
+ 		if (entryData[0] == DIR_ENTRY_LAST) {
+-			gapStart = gapEnd;
++			/* XTS-PATCH(libfat-f): keep a gap of deleted entries that runs into the end marker. Upstream restarted the
++			 * gap at the end marker, so dataStart and dataEnd described fewer entries than addEntry then wrote: the file's
++			 * later syncs updated an LFN entry (attribute 0x0F|0x20) instead of its short entry, whose cluster/size stayed
++			 * 0 (a lost cluster). XTS hit it on every second run (xts/<tag>/current.txt is deleted at the end of a run
++			 * and created again by the next one). */
++			if (dirEntryRemain == size) {
++				gapStart = gapEnd;
++			}
+ 			-- dirEntryRemain;
+ 			endOfDirectory = true;
+ 		} else if (entryData[0] == DIR_ENTRY_FREE) {
+diff -ru upstream/source/fatdir.c source/fatdir.c
+--- upstream/source/fatdir.c	2026-10-17 13:49:07.729973977 +0100
++++ source/fatdir.c	2026-10-17 13:55:24.868098741 +0100
+@@ -158,7 +158,7 @@
+ 	}
+ 
+ 	// Flush any sectors in the disc cache
+-	if (!_FAT_cache_flush(partition->cache)) {
++	if (!_FAT_partition_flush(partition) /* XTS-PATCH(libfat-c) */) {
+ 		r->_errno = EIO;
+ 		errorOccured = true;
+ 	}
+@@ -309,7 +309,7 @@
+ 	}
+ 
+ 	// Flush any sectors in the disc cache
+-	if (!_FAT_cache_flush (partition->cache)) {
++	if (!_FAT_partition_flush(partition) /* XTS-PATCH(libfat-c) */) {
+ 		_FAT_unlock(&partition->lock);
+ 		r->_errno = EIO;
+ 		return -1;
+@@ -441,7 +441,7 @@
+ 		_FAT_fat_clusterToSector (partition, dirCluster), DIR_ENTRY_DATA_SIZE, DIR_ENTRY_DATA_SIZE);
+ 
+ 	// Flush any sectors in the disc cache
+-	if (!_FAT_cache_flush(partition->cache)) {
++	if (!_FAT_partition_flush(partition) /* XTS-PATCH(libfat-c) */) {
+ 		_FAT_unlock(&partition->lock);
+ 		r->_errno = EIO;
+ 		return -1;
+diff -ru upstream/source/fatfile.c source/fatfile.c
+--- upstream/source/fatfile.c	2026-10-17 13:49:07.730041495 +0100
++++ source/fatfile.c	2026-10-17 14:19:09.856634916 +0100
+@@ -322,7 +322,7 @@
+ 			file->dirEntryEnd.offset * DIR_ENTRY_DATA_SIZE, DIR_ENTRY_DATA_SIZE);
+ 
+ 		// Flush any sectors in the disc cache
+-		if (!_FAT_cache_flush(file->partition->cache)) {
++		if (!_FAT_partition_flush(file->partition) /* XTS-PATCH(libfat-c) */) {
+ 			return EIO;
+ 		}
+ 	}
+@@ -963,7 +963,8 @@
+ 		file->rwPosition.byte = position % partition->bytesPerSector;
+ 
+ 		nextCluster = _FAT_fat_nextCluster (partition, cluster);
+-		while ((clusCount > 0) && (nextCluster != CLUSTER_FREE) && (nextCluster != CLUSTER_EOF)) {
++		while ((clusCount > 0) && (nextCluster != CLUSTER_FREE) && (nextCluster != CLUSTER_EOF) &&
++			(nextCluster != CLUSTER_ERROR)) {   // XTS-PATCH(libfat-e)
+ 			clusCount--;
+ 			cluster = nextCluster;
+ 			nextCluster = _FAT_fat_nextCluster (partition, cluster);
+diff -ru upstream/source/file_allocation_table.c source/file_allocation_table.c
+--- upstream/source/file_allocation_table.c	2026-10-17 13:49:07.730112734 +0100
++++ source/file_allocation_table.c	2026-10-17 14:19:09.855468641 +0100
+@@ -35,6 +35,9 @@
+ 
+ /*
+ Gets the cluster linked from input cluster
++XTS-PATCH(libfat-e): CLUSTER_ERROR if the FAT cannot be read. Upstream returned CLUSTER_FREE (the initial value) when the
++cache read failed, so one failed FAT read made the allocator take an IN-USE cluster as free: the replay harness saw the
++root directory cluster allocated to the new "xts" directory and zeroed. Callers below treat CLUSTER_ERROR as an error.
+ */
+ uint32_t _FAT_fat_nextCluster(PARTITION* partition, uint32_t cluster)
+ {
+@@ -59,7 +62,8 @@
+ 			offset = ((cluster * 3) / 2) % partition->bytesPerSector;
+ 
+ 
+-			_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster, sector, offset, sizeof(u8));
++			if (!_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster, sector, offset, sizeof(u8)))
++				return CLUSTER_ERROR;   // XTS-PATCH(libfat-e)
+ 
+ 			offset++;
+ 
+@@ -69,7 +73,8 @@
+ 			}
+ 			nextCluster_h = 0;
+ 
+-			_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster_h, sector, offset, sizeof(u8));
++			if (!_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster_h, sector, offset, sizeof(u8)))
++				return CLUSTER_ERROR;   // XTS-PATCH(libfat-e)
+ 			nextCluster |= (nextCluster_h << 8);
+ 
+ 			if (cluster & 0x01) {
+@@ -89,7 +94,8 @@
+ 			sector = partition->fat.fatStart + ((cluster << 1) / partition->bytesPerSector);
+ 			offset = (cluster % (partition->bytesPerSector >> 1)) << 1;
+ 
+-			_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster, sector, offset, sizeof(u16));
++			if (!_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster, sector, offset, sizeof(u16)))
++				return CLUSTER_ERROR;   // XTS-PATCH(libfat-e)
+ 
+ 			if (nextCluster >= 0xFFF7) {
+ 				nextCluster = CLUSTER_EOF;
+@@ -100,7 +106,8 @@
+ 			sector = partition->fat.fatStart + ((cluster << 2) / partition->bytesPerSector);
+ 			offset = (cluster % (partition->bytesPerSector >> 2)) << 2;
+ 
+-			_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster, sector, offset, sizeof(u32));
++			if (!_FAT_cache_readLittleEndianValue (partition->cache, &nextCluster, sector, offset, sizeof(u32)))
++				return CLUSTER_ERROR;   // XTS-PATCH(libfat-e): upstream returned CLUSTER_FREE, i.e. "free cluster"
+ 
+ 			if (nextCluster >= 0x0FFFFFF7) {
+ 				nextCluster = CLUSTER_EOF;
+@@ -119,10 +126,27 @@
+ writes value into the correct offset within a partition's FAT, based
+ on the cluster number.
+ */
++/*
++XTS-PATCH(libfat-b): write one FAT entry value into every FAT copy (fat.fatCopies: all FATs when the BPB says the FAT is
++mirrored, else only the active one). Upstream wrote FAT #0 only, so FAT #2 went stale with every allocation and
++checkers (chkdsk, fsck.fat) report the volume as damaged. The value is written through the cache like before. sector is
++the sector within the first copy (fatStart).
++*/
++static bool _FAT_fat_writeMirrored (PARTITION* partition, uint32_t value, sec_t sector, unsigned int offset, int size) {
++	uint32_t copy;
++	bool ok = true;
++	for (copy = 0; copy < partition->fat.fatCopies; copy++) {
++		if (!_FAT_cache_writeLittleEndianValue (partition->cache, value, sector + copy * partition->fat.sectorsPerFat, offset, size))
++			ok = false;   // XTS-PATCH(libfat-e): reported (upstream ignored cache write failures)
++	}
++	return ok;
++}
++
+ static bool _FAT_fat_writeFatEntry (PARTITION* partition, uint32_t cluster, uint32_t value) {
+ 	sec_t sector;
+ 	int offset;
+ 	uint32_t oldValue;
++	bool ok = true;   // XTS-PATCH(libfat-e)
+ 
+ 	if ((cluster < CLUSTER_FIRST) || (cluster > partition->fat.lastCluster /* This will catch CLUSTER_ERROR */))
+ 	{
+@@ -141,11 +165,11 @@
+ 
+ 			if (cluster & 0x01) {
+ 
+-				_FAT_cache_readLittleEndianValue (partition->cache, &oldValue, sector, offset, sizeof(u8));
++				if (!_FAT_cache_readLittleEndianValue (partition->cache, &oldValue, sector, offset, sizeof(u8))) return false;
+ 
+ 				value = (value << 4) | (oldValue & 0x0F);
+ 
+-				_FAT_cache_writeLittleEndianValue (partition->cache, value & 0xFF, sector, offset, sizeof(u8));
++				ok &= _FAT_fat_writeMirrored (partition, value & 0xFF, sector, offset, sizeof(u8));
+ 
+ 				offset++;
+ 				if (offset >= partition->bytesPerSector) {
+@@ -153,11 +177,11 @@
+ 					sector++;
+ 				}
+ 
+-				_FAT_cache_writeLittleEndianValue (partition->cache, (value >> 8) & 0xFF, sector, offset, sizeof(u8));
++				ok &= _FAT_fat_writeMirrored (partition, (value >> 8) & 0xFF, sector, offset, sizeof(u8));
+ 
+ 			} else {
+ 
+-				_FAT_cache_writeLittleEndianValue (partition->cache, value, sector, offset, sizeof(u8));
++				ok &= _FAT_fat_writeMirrored (partition, value, sector, offset, sizeof(u8));
+ 
+ 				offset++;
+ 				if (offset >= partition->bytesPerSector) {
+@@ -165,11 +189,11 @@
+ 					sector++;
+ 				}
+ 
+-				_FAT_cache_readLittleEndianValue (partition->cache, &oldValue, sector, offset, sizeof(u8));
++				if (!_FAT_cache_readLittleEndianValue (partition->cache, &oldValue, sector, offset, sizeof(u8))) return false;
+ 
+ 				value = ((value >> 8) & 0x0F) | (oldValue & 0xF0);
+ 
+-				_FAT_cache_writeLittleEndianValue (partition->cache, value, sector, offset, sizeof(u8));
++				ok &= _FAT_fat_writeMirrored (partition, value, sector, offset, sizeof(u8));
+ 			}
+ 
+ 			break;
+@@ -178,7 +202,7 @@
+ 			sector = partition->fat.fatStart + ((cluster << 1) / partition->bytesPerSector);
+ 			offset = (cluster % (partition->bytesPerSector >> 1)) << 1;
+ 
+-			_FAT_cache_writeLittleEndianValue (partition->cache, value, sector, offset, sizeof(u16));
++			ok &= _FAT_fat_writeMirrored (partition, value, sector, offset, sizeof(u16));
+ 
+ 			break;
+ 
+@@ -186,7 +210,7 @@
+ 			sector = partition->fat.fatStart + ((cluster << 2) / partition->bytesPerSector);
+ 			offset = (cluster % (partition->bytesPerSector >> 2)) << 2;
+ 
+-			_FAT_cache_writeLittleEndianValue (partition->cache, value, sector, offset, sizeof(u32));
++			ok &= _FAT_fat_writeMirrored (partition, value, sector, offset, sizeof(u32));
+ 
+ 			break;
+ 
+@@ -195,7 +219,7 @@
+ 			break;
+ 	}
+ 
+-	return true;
++	return ok;
+ }
+ 
+ /*-----------------------------------------------------------------
+@@ -218,6 +242,9 @@
+ 
+ 	// Check if the cluster already has a link, and return it if so
+ 	curLink = _FAT_fat_nextCluster(partition, cluster);
++	if (curLink == CLUSTER_ERROR) {
++		return CLUSTER_ERROR;	// XTS-PATCH(libfat-e): cannot read the link: do not overwrite it
++	}
+ 	if ((curLink >= CLUSTER_FIRST) && (curLink <= lastCluster)) {
+ 		return curLink;	// Return the current link - don't allocate a new one
+ 	}
+@@ -230,7 +257,10 @@
+ 	}
+ 
+ 	// Search until a free cluster is found
+-	while (_FAT_fat_nextCluster(partition, firstFree) != CLUSTER_FREE) {
++	while ((curLink = _FAT_fat_nextCluster(partition, firstFree)) != CLUSTER_FREE) {
++		if (curLink == CLUSTER_ERROR) {
++			return CLUSTER_ERROR;	// XTS-PATCH(libfat-e): an unreadable FAT entry is not a free cluster
++		}
+ 		firstFree++;
+ 		if (firstFree > lastCluster) {
+ 			if (loopedAroundFAT) {
+@@ -250,13 +280,19 @@
+ 		partition->fat.numberFreeCluster--;
+ 	partition->fat.numberLastAllocCluster = firstFree;
+ 
++	/* XTS-PATCH(libfat-e): mark the new cluster end-of-chain BEFORE linking to it (upstream did it the other way round),
++	 * and fail if either FAT write fails: an interrupted allocation then leaves at most a lost cluster, never a chain
++	 * that runs into a free cluster. */
++	if (!_FAT_fat_writeFatEntry (partition, firstFree, CLUSTER_EOF)) {
++		return CLUSTER_ERROR;
++	}
+ 	if ((cluster >= CLUSTER_FIRST) && (cluster <= lastCluster))
+ 	{
+ 		// Update the linked from FAT entry
+-		_FAT_fat_writeFatEntry (partition, cluster, firstFree);
++		if (!_FAT_fat_writeFatEntry (partition, cluster, firstFree)) {
++			return CLUSTER_ERROR;
++		}
+ 	}
+-	// Create the linked to FAT entry
+-	_FAT_fat_writeFatEntry (partition, firstFree, CLUSTER_EOF);
+ 
+ 	return firstFree;
+ }
+@@ -284,9 +320,13 @@
+ 	// Clear all the sectors within the cluster
+ 	memset (emptySector, 0, partition->bytesPerSector);
+ 	for (i = 0; i < partition->sectorsPerCluster; i++) {
+-		_FAT_cache_writeSectors (partition->cache,
++		if (!_FAT_cache_writeSectors (partition->cache,
+ 			_FAT_fat_clusterToSector (partition, newCluster) + i,
+-			1, emptySector);
++			1, emptySector)) {
++			// XTS-PATCH(libfat-e): a cluster that could not be cleared must not become a directory cluster
++			_FAT_mem_free(emptySector);
++			return CLUSTER_ERROR;
++		}
+ 	}
+ 
+ 	_FAT_mem_free(emptySector);
+@@ -345,14 +385,14 @@
+ 		// Find the last cluster in the chain, and the one after it
+ 		chainLength--;
+ 		nextCluster = _FAT_fat_nextCluster (partition, startCluster);
+-		while ((chainLength > 0) && (nextCluster != CLUSTER_FREE) && (nextCluster != CLUSTER_EOF)) {
++		while ((chainLength > 0) && (nextCluster != CLUSTER_FREE) && (nextCluster != CLUSTER_EOF) && (nextCluster != CLUSTER_ERROR)) {
+ 			chainLength--;
+ 			startCluster = nextCluster;
+ 			nextCluster = _FAT_fat_nextCluster (partition, startCluster);
+ 		}
+ 
+ 		// Drop all clusters after the last in the chain
+-		if (nextCluster != CLUSTER_FREE && nextCluster != CLUSTER_EOF) {
++		if (nextCluster != CLUSTER_FREE && nextCluster != CLUSTER_EOF && nextCluster != CLUSTER_ERROR) {
+ 			_FAT_fat_clearLinks (partition, nextCluster);
+ 		}
+ 
+@@ -368,8 +408,11 @@
+ Trace the cluster links until the last one is found
+ -----------------------------------------------------------------*/
+ uint32_t _FAT_fat_lastCluster (PARTITION* partition, uint32_t cluster) {
+-	while ((_FAT_fat_nextCluster(partition, cluster) != CLUSTER_FREE) && (_FAT_fat_nextCluster(partition, cluster) != CLUSTER_EOF)) {
+-		cluster = _FAT_fat_nextCluster(partition, cluster);
++	uint32_t next;
++	// XTS-PATCH(libfat-e): stop at an unreadable link (upstream would follow CLUSTER_ERROR into the weeds)
++	while (((next = _FAT_fat_nextCluster(partition, cluster)) != CLUSTER_FREE) && (next != CLUSTER_EOF) &&
++		(next != CLUSTER_ERROR)) {
++		cluster = next;
+ 	}
+ 	return cluster;
+ }
+diff -ru upstream/source/libfat.c source/libfat.c
+--- upstream/source/libfat.c	2026-10-17 13:49:07.730218347 +0100
++++ source/libfat.c	2026-10-17 13:55:55.148612844 +0100
+@@ -255,3 +255,81 @@
+ 	}
+ 	if(!strncmp(label, "NO NAME", 7)) label[0]='\0';
+ }
++
++/* ---------------------------------------------------------------------------------------------------------------
++ * XTS extensions (include/fat_xts.h). New functions only; nothing above calls them.
++ * --------------------------------------------------------------------------------------------------------------- */
++#include "fat_xts.h"
++#include "directory.h"
++#include "file_allocation_table.h"
++#include "bit_ops.h"
++
++static PARTITION* _FAT_xts_partition (const char* name) {
++	const devoptab_t *devops;
++	if (!name)
++		return NULL;
++	devops = GetDeviceOpTab (name);
++	if (!devops || devops->open_r != dotab_fat.open_r)
++		return NULL;
++	return (PARTITION*)devops->deviceData;
++}
++
++bool fatFlush (const char* name) {
++	PARTITION* partition = _FAT_xts_partition (name);
++	FILE_STRUCT* file;
++	bool ok = true;
++	if (!partition)
++		return false;
++	_FAT_lock(&partition->lock);
++	for (file = partition->firstOpenFile; file; file = file->nextOpenFile) {
++		if (_FAT_syncToDisc (file) != 0)
++			ok = false;
++	}
++	if (!_FAT_partition_flush (partition))
++		ok = false;
++	_FAT_unlock(&partition->lock);
++	return ok;
++}
++
++int fatFileExtent (const char* path, uint32_t* firstSector, uint32_t* numSectors, uint32_t* bytesPerSector) {
++	PARTITION* partition = _FAT_xts_partition (path);
++	DIR_ENTRY entry;
++	uint32_t cluster, next, clusters = 0, size;
++	int ret = 0;
++	if (!partition)
++		return -1;
++	if (strchr (path, ':') != NULL)
++		path = strchr (path, ':') + 1;
++	_FAT_lock(&partition->lock);
++	if (!_FAT_directory_entryFromPath (partition, &entry, path, NULL) || _FAT_directory_isDirectory (&entry)) {
++		_FAT_unlock(&partition->lock);
++		return -1;
++	}
++	cluster = _FAT_directory_entryGetCluster (partition, entry.entryData);
++	size = u8array_to_u32 (entry.entryData, DIR_ENTRY_fileSize);
++	if (!_FAT_fat_isValidCluster (partition, cluster) || size == 0) {
++		_FAT_unlock(&partition->lock);
++		return -2;
++	}
++	if (firstSector)
++		*firstSector = _FAT_fat_clusterToSector (partition, cluster);
++	for (;;) {
++		clusters++;
++		next = _FAT_fat_nextCluster (partition, cluster);
++		if (next == CLUSTER_EOF)
++			break;
++		if (next != cluster + 1) {   // not contiguous (or a broken chain)
++			ret = -2;
++			break;
++		}
++		cluster = next;
++	}
++	if (ret == 0 && (uint64_t)clusters * partition->bytesPerCluster < size)
++		ret = -2;
++	if (numSectors)
++		*numSectors = (size + partition->bytesPerSector - 1) / partition->bytesPerSector;
++	if (bytesPerSector)
++		*bytesPerSector = partition->bytesPerSector;
++	_FAT_unlock(&partition->lock);
++	return ret;
++}
+diff -ru upstream/source/partition.c source/partition.c
+--- upstream/source/partition.c	2026-10-17 13:49:07.730316113 +0100
++++ source/partition.c	2026-10-17 14:37:11.811546742 +0100
+@@ -260,6 +260,8 @@
+ 	partition->fat.firstFree = CLUSTER_FIRST;
+ 	partition->fat.numberFreeCluster = 0;
+ 	partition->fat.numberLastAllocCluster = 0;
++	partition->fat.fatCopies = sectorBuffer[BPB_numFATs] ? sectorBuffer[BPB_numFATs] : 1;
++	partition->fat.fsInfoValid = false;
+ 
+ 	if (clusterCount < CLUSTERS_PER_FAT12) {
+ 		partition->filesysType = FS_FAT12;	// FAT12 volume
+@@ -274,15 +276,23 @@
+ 	} else {
+ 		// Set up for the FAT32 way
+ 		partition->rootDirCluster = u8array_to_u32(sectorBuffer, BPB_FAT32_rootClus);
+-		// Check if FAT mirroring is enabled
+-		if (!(sectorBuffer[BPB_FAT32_extFlags] & 0x80)) {
+-			// Use the active FAT
+-			partition->fat.fatStart = partition->fat.fatStart + ( partition->fat.sectorsPerFat * (sectorBuffer[BPB_FAT32_extFlags] & 0x0F));
++		/* XTS-PATCH(libfat-b): BPB_ExtFlags bit 7 = 1: mirroring disabled, only the FAT numbered in bits 0-3 is active
++		 * (read and written); bit 7 = 0: the FAT is mirrored at runtime into all FATs (read FAT #0, write every copy).
++		 * Upstream had the test inverted (and wrote FAT #0 only in both cases). */
++		if (sectorBuffer[BPB_FAT32_extFlags] & 0x80) {
++			uint32_t active = sectorBuffer[BPB_FAT32_extFlags] & 0x0F;
++			if (active < partition->fat.fatCopies)
++				partition->fat.fatStart = partition->fat.fatStart + ( partition->fat.sectorsPerFat * active);
++			partition->fat.fatCopies = 1;
+ 		}
+ 	}
+ 
+ 	// Create a cache to use
+ 	partition->cache = _FAT_cache_constructor (cacheSize, sectorsPerPage, partition->disc, startSector+partition->numberOfSectors, partition->bytesPerSector);
++	if (partition->cache) {   // XTS-PATCH(libfat-g): every FAT copy, flushed first
++		partition->cache->fatFirst = startSector + u8array_to_u16(sectorBuffer, BPB_reservedSectors);
++		partition->cache->fatEnd = partition->rootDirStart;
++	}
+ 
+ 	// Set current directory to the root
+ 	partition->cwdCluster = partition->rootDirCluster;
+@@ -371,7 +381,12 @@
+ 	sectorBuffer[FSIB_bootSig_55] = 0x55;
+ 	sectorBuffer[FSIB_bootSig_AA] = 0xAA;
+ 
+-	_FAT_disc_writeSectors (partition->disc, partition->fsInfoSector, 1, sectorBuffer);
++	if (_FAT_disc_writeSectors (partition->disc, partition->fsInfoSector, 1, sectorBuffer)) {
++		_FAT_cache_updateIfCached (partition->cache, partition->fsInfoSector, sectorBuffer);   // XTS-PATCH(libfat-c)
++		partition->fat.fsInfoFree = partition->fat.numberFreeCluster;
++		partition->fat.fsInfoLastAlloc = partition->fat.numberLastAllocCluster;
++		partition->fat.fsInfoValid = true;
++	}
+ 
+ 	_FAT_mem_free(sectorBuffer);
+ }
+@@ -399,6 +414,9 @@
+ 	} else {
+ 		partition->fat.numberFreeCluster = u8array_to_u32(sectorBuffer, FSIB_numberOfFreeCluster);
+ 		partition->fat.numberLastAllocCluster = u8array_to_u32(sectorBuffer, FSIB_numberLastAllocCluster);
++		partition->fat.fsInfoFree = partition->fat.numberFreeCluster;
++		partition->fat.fsInfoLastAlloc = partition->fat.numberLastAllocCluster;
++		partition->fat.fsInfoValid = true;
+ 	}
+ 	_FAT_mem_free(sectorBuffer);
+ }
+@@ -408,6 +426,12 @@
+ 	if(partition->filesysType != FS_FAT32)
+ 		return;
+ 
++	// XTS-PATCH(libfat-c): called on every sync now; write only when the values changed
++	if(partition->readOnly || (partition->fat.fsInfoValid &&
++		partition->fat.fsInfoFree == partition->fat.numberFreeCluster &&
++		partition->fat.fsInfoLastAlloc == partition->fat.numberLastAllocCluster))
++		return;
++
+ 	uint8_t *sectorBuffer = (uint8_t*) _FAT_mem_align(partition->bytesPerSector);
+ 	if (!sectorBuffer) return;
+ 	memset(sectorBuffer, 0, partition->bytesPerSector);
+@@ -426,6 +450,19 @@
+ 	u32_to_u8array(sectorBuffer, FSIB_numberLastAllocCluster, partition->fat.numberLastAllocCluster);
+ 
+ 	// Write first sector of disc
+-	_FAT_disc_writeSectors (partition->disc, partition->fsInfoSector, 1, sectorBuffer);
++	if (_FAT_disc_writeSectors (partition->disc, partition->fsInfoSector, 1, sectorBuffer)) {
++		_FAT_cache_updateIfCached (partition->cache, partition->fsInfoSector, sectorBuffer);   // XTS-PATCH(libfat-c)
++		partition->fat.fsInfoFree = partition->fat.numberFreeCluster;
++		partition->fat.fsInfoLastAlloc = partition->fat.numberLastAllocCluster;
++		partition->fat.fsInfoValid = true;
++	}
+ 	_FAT_mem_free(sectorBuffer);
+ }
++
++bool _FAT_partition_flush(PARTITION * partition)
++{
++	if (!_FAT_cache_flush(partition->cache))
++		return false;
++	_FAT_partition_writeFSinfo(partition);
++	return true;
++}
+diff -ru upstream/source/partition.h source/partition.h
+--- upstream/source/partition.h	2026-10-17 13:49:07.730881597 +0100
++++ source/partition.h	2026-10-17 13:55:24.870003623 +0100
+@@ -47,6 +47,10 @@
+ 	uint32_t firstFree;
+ 	uint32_t numberFreeCluster;
+ 	uint32_t numberLastAllocCluster;
++	uint32_t fatCopies;              // XTS-PATCH(libfat-b): FAT copies every entry write goes to (fatStart, +sectorsPerFat, ...)
++	uint32_t fsInfoFree;             // XTS-PATCH(libfat-c): the values last read from / written to the FSInfo sector
++	uint32_t fsInfoLastAlloc;
++	bool     fsInfoValid;
+ } FAT;
+ 
+ typedef struct {
+@@ -104,4 +108,10 @@
+ */
+ void _FAT_partition_writeFSinfo(PARTITION * partition);
+ 
++/*
++XTS-PATCH(libfat-c): flush the cache, then write the FSInfo sector if the free count / last allocated cluster changed.
++Used by fsync/close (_FAT_syncToDisc), unlink, rename and mkdir; upstream wrote FSInfo only in fatUnmount.
++*/
++bool _FAT_partition_flush(PARTITION * partition);
++
+ #endif // _PARTITION_H

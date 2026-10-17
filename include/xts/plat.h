@@ -18,7 +18,9 @@ void xts_plat_poll(void);                   /* keep USB alive (called between bl
 void xts_plat_screen(const char *line);     /* one message line on screen (console) / stderr (host): errors, halts */
 void xts_plat_status(const char *line);     /* the status line: console redraws one fixed screen row (no scrolling,
                                                one cache flush), host stderr; callers rate-limit (xts_status) */
-void xts_plat_halt(const char *why);        /* final state: message on screen, spin (console) / exit (host) */
+/* final state: if storage is mounted, healthy and no file operation is in progress: fatFlush + fatUnmount, then the
+ * message and "stick unmounted: safe to power off" (or why not) on screen; spin (console) / exit(1) (host) */
+void xts_plat_halt(const char *why);
 
 /* "<root>/<a>/<b>" into buf (NULL components end the list). Returns buf. */
 char *xts_path(char *buf, size_t size, const char *a, const char *b, const char *c, const char *d);
@@ -29,6 +31,25 @@ int xts_append_durable(const char *path, const void *data, size_t n);
 /* read a whole small file into buf (NUL-terminated); returns length or -1 */
 int xts_read_small(const char *path, char *buf, size_t size);
 int xts_write_small(const char *path, const char *text);   /* replace a small file, durable */
+
+/* Storage health. On the console (and the host in image mode, XTS_HOST_STORAGE=image:<file>) libfat reaches the
+ * device through the disc guard (src/plat/disc_guard.c): every read is done twice and compared, every write is read
+ * back and compared. The first failure latches "poisoned": no further write reaches the device (reads still work).
+ * The core then stops writing (sinks, journal) and stops the run; the screen says STORAGE ERROR. */
+typedef struct xts_storage_status {
+  int guard;                                /* 1 = disc guard verifies libfat's I/O; 0 = pass-through / host directory */
+  int poisoned;                             /* 1 = a storage error was latched: writes are refused from now on */
+  char op[8];                               /* first error: "read", "write" or "verify" */
+  uint32_t sector, count;                   /* its sector range (device sectors) */
+  char why[112];                            /* what went wrong */
+  uint64_t sectors_read, sectors_written;   /* sectors libfat read / wrote through the guard */
+  uint64_t device_reads, device_writes;     /* device calls (verification included) */
+  uint64_t read_retries;                    /* reads whose first double read disagreed but the retry agreed */
+  uint64_t writes_refused;                  /* writes refused after the latch */
+  uint64_t write_repairs, write_repaired;   /* failed writes rewritten once (before latching) / of those, verified */
+  double guard_ms;                          /* time spent in the guard, device time included */
+} xts_storage_status_t;
+int xts_plat_storage_status(xts_storage_status_t *st);   /* fills st (may be NULL); returns poisoned (0/1) */
 
 /* time */
 uint64_t xts_tb(void);                      /* timebase */
@@ -49,10 +70,30 @@ void xts_plat_default_tag(char *buf, size_t size);
 /* 64-bit SPR read done right on the 32-bit ABI (std of the full register). Console only, host returns 0. */
 uint64_t xts_mfspr64(int spr);
 
-/* Reserved RAM page for the crash record (never FAT from exception context). Host: a file-backed buffer. */
-void *xts_plat_crash_page(size_t *size);
-void xts_plat_crash_page_sync(void);        /* host: write the page file; console: dcbf */
-/* Lowest address the heap may grow to before reaching the crash page (big-buffer bound check). */
+/* Storage boundaries (src/core/main.c): the stick is consistent whenever test code runs. */
+int xts_plat_storage_flush(void);           /* fatFlush: every open file, the cache (FAT copies, directories, data),
+                                               FSInfo. 0 ok; host directory: 0 */
+/* Final: fatFlush + fatUnmount (no file I/O afterwards; xts_plat_root() becomes ""). 0 = unmounted cleanly, -1 = not
+ * mounted / refused (poisoned, a file operation in progress), -2 = the flush reported an error (unmounted anyway). */
+int xts_plat_storage_unmount(void);
+/* Crash-path safe (no stdio, no malloc): */
+int xts_plat_storage_busy(void);            /* 1 = the USB driver / disc guard is inside an operation (do not touch) */
+int xts_plat_storage_poisoned(void);        /* the disc guard latched an error (no writes) */
+uint32_t xts_plat_sector_size(void);        /* device sector size (512..4096); host directory: 512 */
+
+/* Raw sector access to pre-allocated report files (crash.json, progress.bin; src/core/slot.c). `first` is the file's
+ * first device sector from xts_plat_file_extent (console / host image: absolute device sector, written through the disc
+ * guard's verified raw API; host directory: unused, the file at `path` is read/written at idx * 512 instead).
+ *   xts_plat_file_extent  0 = one contiguous run, *first / *nsec set; -2 = not contiguous; -1 = unknown file / no API.
+ *                         Only while healthy, after xts_plat_storage_flush, with the file closed.
+ *   xts_plat_raw_read     one sector, double-read verified. 0 or a negative XTS_DISC_* code.
+ *   xts_plat_raw_write    one sector, only if it currently holds `magic` at `magic_off` and `buf` does too; read back.
+ *                         0 or a negative XTS_DISC_* code (src/plat/disc_guard.h). Crash-path safe on the console. */
+int xts_plat_file_extent(const char *path, uint32_t *first, uint32_t *nsec);
+int xts_plat_raw_read(const char *path, uint32_t first, uint32_t idx, void *buf);
+int xts_plat_raw_write(const char *path, uint32_t first, uint32_t idx, const void *buf, const void *magic, uint32_t magic_len,
+                       uint32_t magic_off);
+/* Lowest address the heap may grow to (big-buffer bound check): keeps big allocations clear of the stacks above. */
 uintptr_t xts_plat_heap_limit(void);
 
 /* watchdog hook (src/smt implements it with -DXTS_WATCHDOG; src/core/watchdog.c has weak no-op defaults). The core kicks

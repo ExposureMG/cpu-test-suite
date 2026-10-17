@@ -1,5 +1,5 @@
-/* Platform layer, console build (libxenon + libfat): screen, USB mass storage, timebase, SMC, identity, crash page.
- * No network. Never reads the CPU key, the keyvault or fuse lines 3-6. */
+/* Platform layer, console build (libxenon + libfat): screen, USB mass storage, timebase, SMC, identity, the crash entry
+ * and raw report-file sectors. No network. Never reads the CPU key, the keyvault or fuse lines 3-6. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,7 +8,8 @@
 #include <sys/statvfs.h>
 #include <unistd.h>
 #include <console/console.h>
-#include <libfat/fat.h>
+#include <fat.h>                    /* third_party/libfat (vendored, patched; same API as <libfat/fat.h>) */
+#include <fat_xts.h>
 #include <ppc/cache.h>
 #include <ppc/timebase.h>
 #include <time/time.h>
@@ -19,23 +20,15 @@
 #include <xenon_soc/xenon_power.h>
 #include <xenos/xenos.h>
 #include <xts/xts.h>
-#include <core/core.h>              /* crash page record, build id */
-#include <plat/plat_libxenon.h>     /* xenon_get_speed */
+#include <core/core.h>              /* crash path, write guard, build id */
+#include <plat/plat_libxenon.h>     /* xenon_get_speed, usb2mass_ops_N */
+#include <plat/disc_guard.h>        /* every libfat sector goes through the disc guard */
 
-/* Reserved crash page: EA 0x9D000000 (real 0x1D000000), 64 KB. Real-memory map at the next boot (what may overwrite it):
- *   XeLL stage 1 (xell-reloaded source/lv1/xell-*.lds): code 0x1C000000 (the NAND image is copied there), bss with the
- *     1 MB stage-2 ELF buffer from 0x1C080000, stacks 0x1DFA0000-0x1E000000 (64 KB per thread below 0x1E000000);
- *   XeLL stage 2 (a libxenon app): image + bss 0x00000000-0x00701600, heap above it (xenon.elf file buffer), ELF loader
- *     buffers 0x05FE0000-0x14000000 (libxenon drivers/elf/elf.c), main stack 0x1DE00000 down, per-thread HV contexts
- *     0x1DE80000-0x1DFFFFFF, framebuffer 0x1E000000;
- *   XTS itself: image + bss from 0, heap above (unbounded sbrk; the big buffer and the other large allocations check
- *     xts_plat_heap_limit), main stack 0x1DE00000 down (~14 MB above the page), HV contexts 0x1DE80000-0x1DFFFFFF.
- * The old place, 0x1C000000, is XeLL stage 1's own code: overwritten on every boot. Whether 0x1D000000 survives an SMC
- * reboot / the CB/CD boot stages is NOT verified: sysinfo.json "crashpage_survived" reports it; the journal (CRASH and
- * CASE lines) is the fallback. */
-#define CRASH_PAGE_EA 0x9D000000u
-#define CRASH_PAGE_SIZE 0x10000u
-#define HEAP_LIMIT_EA 0x9C800000u     /* big allocations stay 8 MB below the page (room for small ones after them) */
+/* Heap bound for the big buffer and other large allocations (xts_plat_heap_limit): XTS's image + bss start at 0, the heap
+ * grows above them (unbounded sbrk), the main stack sits at 0x1DE00000 and grows down, libxenon's per-thread HV contexts
+ * are at 0x1DE80000-0x1DFFFFFF. Big allocations stay below EA 0x9C800000 (real 0x1C800000), ~22 MB under the stack.
+ * (The RAM crash page that used to sit at 0x1D000000 is gone: crash reports go to crash.json on the stick.) */
+#define HEAP_LIMIT_EA 0x9C800000u
 
 static char root[16] = "";
 static char vol_label[32] = "";
@@ -45,6 +38,8 @@ static int cached_type = -1;
 static unsigned cached_dve;
 static uint8_t smc_raw_12[16], smc_raw_04[16];
 static int smc_have_12, smc_have_04;
+static volatile int usb_poll_busy;   /* inside usb_do_poll (the crash path then leaves the stick alone) */
+static char fat_name[8];
 
 /* crash path state (src/exec/vec.S crashdump): per-PIR entry count, emergency stacks, the r2/r13 main() runs with */
 volatile uint32_t xts_crash_depth[6];
@@ -85,11 +80,11 @@ static inline void status_px(int x, int y, uint32_t c)
 }
 
 /* crash-path safe: no stdio, no malloc */
-static void status_draw(const char *s)
+static void status_draw_row(int row, const char *s)
 {
   if (!sfb) return;
   uint32_t fg = console_color[0], bg = console_color[1];   /* inverted: a bar */
-  int y0 = sfb_offy;
+  int y0 = sfb_offy + 16 * row;
   for (int col = 0; col < sfb_cols; col++) {
     unsigned char ch = *s ? (unsigned char)*s++ : ' ';
     int x0 = sfb_offx + col * 8;
@@ -101,17 +96,33 @@ static void status_draw(const char *s)
   int r0 = y0 >> 5, r1 = (y0 + 15) >> 5;
   memdcbst(sfb + r0 * 32 * sfb_w, (r1 - r0 + 1) * 32 * sfb_w * 4);
 }
+static void status_draw(const char *s) { status_draw_row(0, s); }
 
-static void find_root(void)
+static uint32_t usb_sector_size;
+static void storage_notify(const char *msg) { printf("\n%s\n", msg); }
+
+/* Mount the first USB FAT volume ONCE, through the disc guard, as "uda:" / "udb:" / "udc:" (the names fatInitDefault
+ * used). fatInitDefault is not used: called in a retry loop it re-ran every interface's startup() and probed the ATA
+ * interface too, and it would mount the raw USB interface without the guard. Cache: libfat's defaults (4 pages of 64
+ * sectors), as fatInitDefault had. 0 = mounted */
+static int mount_usb(void)
 {
-  root[0] = 0;
-  for (int i = 0; i < STD_MAX; i++) {
-    const devoptab_t *d = devoptab_list[i];
-    if (d && d->name && !strncmp(d->name, "ud", 2)) {
-      snprintf(root, sizeof root, "%s:", d->name);
-      return;
+  static const char *const names[3] = { "uda", "udb", "udc" };
+  DISC_INTERFACE *ud[3] = { &usb2mass_ops_0, &usb2mass_ops_1, &usb2mass_ops_2 };
+  for (int i = 0; i < 3; i++) {
+    if (!ud[i]->isInserted()) continue;
+    u32 ss = 0;
+    if (USBStorage_Get_Capacity(i, &ss) <= 0 || ss < 512 || ss > XTS_DISC_MAX_SECTOR) ss = 512;
+    if (xts_disc_guard_init(ud[i], ss, 1) < 0) return -1;
+    xts_disc_set_notify(storage_notify);
+    if (fatMount(names[i], xts_disc_guard_iface(), 0, 4, 64)) {
+      usb_sector_size = ss;
+      snprintf(root, sizeof root, "%s:", names[i]);
+      snprintf(fat_name, sizeof fat_name, "%s", names[i]);
+      return 0;
     }
   }
+  return -1;
 }
 
 static int smc_query(uint8_t cmd, uint8_t reply[16]);
@@ -128,11 +139,11 @@ int xts_plat_init(int argc, char **argv)
   cached_type = xenon_get_console_type();                     /* SMC queries without timeout in libxenon: once */
   cached_dve = xenon_get_DVE();
   usb_init();
+  root[0] = 0;
   for (int attempt = 0; attempt < 10 && !root[0]; attempt++) {
     uint64_t t0 = mftb();
-    while (tb_diff_msec(mftb(), t0) < 500) usb_do_poll();      /* let the device enumerate */
-    fatInitDefault();
-    find_root();
+    while (tb_diff_msec(mftb(), t0) < 500) xts_plat_poll();    /* let the device enumerate */
+    mount_usb();
   }
   if (!root[0]) { printf("XTS: no USB FAT volume found (FAT32 on an MBR partition, or a superfloppy, is required)\n"); return -1; }
   fatGetVolumeLabel(root, vol_label);
@@ -141,6 +152,7 @@ int xts_plat_init(int argc, char **argv)
   char rp[24];
   snprintf(rp, sizeof rp, "%s/", root);
   struct statvfs sv;
+  memset(&sv, 0, sizeof sv);   /* libfat's statvfs rescans the whole FAT (and rewrites FSInfo) if f_flag reads "SCAN" */
   if (statvfs(rp, &sv) == 0) {
     vol_stat_ok = 1;
     vol_free = (unsigned long long)sv.f_bfree * sv.f_bsize;
@@ -155,7 +167,12 @@ int xts_plat_init(int argc, char **argv)
 int xts_plat_is_host(void) { return 0; }
 const char *xts_plat_root(void) { return root; }
 const char *xts_plat_name(void) { return "console"; }
-void xts_plat_poll(void) { usb_do_poll(); }
+void xts_plat_poll(void)
+{
+  usb_poll_busy = 1;
+  usb_do_poll();
+  usb_poll_busy = 0;
+}
 void xts_plat_screen(const char *line) { printf("%s\n", line); }
 void xts_plat_status(const char *line)
 {
@@ -163,13 +180,74 @@ void xts_plat_status(const char *line)
   else printf("%s\n", line);
 }
 
+int xts_plat_storage_status(xts_storage_status_t *st)
+{
+  xts_storage_status_t tmp;
+  if (!st) st = &tmp;
+  if (xts_disc_guard_device()) xts_disc_status(st);
+  else memset(st, 0, sizeof *st);
+  return st->poisoned;
+}
+
 void xts_plat_halt(const char *why)
 {
-  printf("\nXTS: %s\n", why);
+  const char *um = "";
+  if (root[0]) {                              /* final state: everything libfat holds onto the stick, then unmount */
+    int r = (xts_fat_busy || xts_cases_running) ? -1 : xts_plat_storage_unmount();
+    um = r == 0 ? "\nXTS: stick unmounted: safe to power off." :
+                  "\nXTS: the stick could NOT be unmounted cleanly: check it on a PC (fsck.fat -n / chkdsk) before reuse.";
+  }
+  printf("\nXTS: %s%s\n", why, um);
   for (;;) {
-    usb_do_poll();
+    xts_plat_poll();
     mdelay(100);
   }
+}
+
+/* ---- storage boundaries ---- */
+int xts_plat_storage_flush(void)
+{
+  if (!root[0]) return 0;
+  if (xts_disc_poisoned()) return -1;
+  return fatFlush(root) ? 0 : -1;
+}
+
+int xts_plat_storage_unmount(void)
+{
+  if (!root[0] || xts_disc_poisoned() || xts_fat_busy) return -1;
+  xts_fat_busy++;
+  int r = fatFlush(root) ? 0 : -2;
+  fatUnmount(fat_name);                       /* closes what is still open, flushes the cache, writes FSInfo */
+  xts_fat_busy--;
+  root[0] = 0;
+  return r;
+}
+
+int xts_plat_storage_busy(void) { return xts_disc_busy() || usb_poll_busy; }
+int xts_plat_storage_poisoned(void) { return xts_disc_poisoned(); }
+uint32_t xts_plat_sector_size(void) { return usb_sector_size ? usb_sector_size : 512; }
+
+int xts_plat_file_extent(const char *path, uint32_t *first, uint32_t *nsec)
+{
+  uint32_t bps = 0;
+  xts_fat_busy++;
+  int r = fatFileExtent(path, first, nsec, &bps);
+  xts_fat_busy--;
+  return (r == 0 && bps != xts_disc_sector_size()) ? -1 : r;
+}
+
+/* crash-path safe: the disc guard's raw API (no libfat, no malloc, no stdio) */
+int xts_plat_raw_read(const char *path, uint32_t first, uint32_t idx, void *buf)
+{
+  (void)path;
+  return xts_disc_read(first + idx, 1, buf);
+}
+
+int xts_plat_raw_write(const char *path, uint32_t first, uint32_t idx, const void *buf, const void *magic, uint32_t magic_len,
+                       uint32_t magic_off)
+{
+  (void)path;
+  return xts_disc_write_marked(first + idx, buf, magic, magic_len, magic_off, 0);
 }
 
 char *xts_path(char *buf, size_t size, const char *a, const char *b, const char *c, const char *d)
@@ -189,6 +267,7 @@ char *xts_path(char *buf, size_t size, const char *a, const char *b, const char 
 int xts_mkdirs(const char *path)
 {
   char tmp[320];
+  if (xts_write_refused("mkdir", path)) return -1;
   xts_fat_busy++;
   snprintf(tmp, sizeof tmp, "%s", path);
   char *start = strchr(tmp, ':');
@@ -217,6 +296,7 @@ int xts_file_exists(const char *path)
 /* every libfat use is bracketed by xts_fat_busy (the crash path never enters libfat while it is set) */
 int xts_append_durable(const char *path, const void *data, size_t n)
 {
+  if (xts_write_refused("append", path)) return -1;
   xts_fat_busy++;
   int r = -1;
   FILE *f = fopen(path, "ab");
@@ -243,6 +323,7 @@ int xts_read_small(const char *path, char *buf, size_t size)
 
 int xts_write_small(const char *path, const char *text)
 {
+  if (xts_write_refused("write", path)) return -1;
   xts_fat_busy++;
   int r = -1;
   FILE *f = fopen(path, "wb");
@@ -425,26 +506,19 @@ void xts_plat_sysinfo(struct xts_json *j)
   put_raw16(j, "smc_reply_12_raw", smc_raw_12, smc_have_12);   /* the 16 reply bytes of query 0x12 (version) */
   put_raw16(j, "smc_reply_04_raw", smc_raw_04, smc_have_04);   /* ... and of query 0x04 (RTC) */
   xj_kv_str(j, "usb_device", root);
+  xj_kv_uint(j, "usb_sector_size", usb_sector_size);
+#ifdef XTS_USB_FIX
+  xj_kv_str(j, "usb_driver", "third_party/libxenon-usb (patched: transfer errors -> reset + retry, bounded retries)");
+#else
+  xj_kv_str(j, "usb_driver", "libxenon (unpatched)");
+#endif
+  xj_kv_bool(j, "disc_guard", xts_disc_guard_enabled());
   xj_kv_str(j, "volume_label", vol_label);
   if (vol_stat_ok) { xj_kv_uint(j, "volume_free_bytes", vol_free); xj_kv_uint(j, "volume_size_bytes", vol_size); }
   xj_kv_hex(j, "slot", xts_exec_slot_addr(), 8);
   xj_kv_hex(j, "kernel_buffer", xts_exec_kernel_addr(), 8);
   xj_kv_hex(j, "scratch", xts_scratch_addr(), 8);
-  xj_kv_hex(j, "crash_page", CRASH_PAGE_EA, 8);
-}
-
-/* ---- crash page ---- */
-void *xts_plat_crash_page(size_t *size)
-{
-  if (size) *size = CRASH_PAGE_SIZE;
-  return (void *)CRASH_PAGE_EA;
-}
-
-void xts_plat_crash_page_sync(void)
-{
-  asm volatile("sync" ::: "memory");
-  memdcbf((void *)CRASH_PAGE_EA, sizeof(xts_crashpage_t));
-  asm volatile("sync" ::: "memory");
+  xj_kv_str(j, "crash_reports", "crash.json + progress.bin in the run directory (raw sectors via the disc guard)");
 }
 
 uintptr_t xts_plat_heap_limit(void) { return HEAP_LIMIT_EA; }
@@ -463,42 +537,32 @@ static char *crash_hex(char *o, char *end, uint64_t v, int digits)
 
 /* Entered from crashdump (src/exec/vec.S) after an unhandled exception, on this PIR's emergency stack with MSR[SF]
  * cleared. r3 = vector, r4 = context (libxenon's: r0-r31, LR, CTR, CR, XER, SRR0, SRR1, DAR, PIR), r5 = how many
- * crashes this PIR was already handling (1 = the handler itself faulted). Nothing here returns. */
-void xts_crash_entry(uint32_t vector, uint64_t *ctx, uint32_t depth)
+ * crashes this PIR was already handling (1 = the handler itself faulted), r6 = DSISR as found at crashdump (meaningful
+ * for vectors 0x300/0x600). No stdio, no malloc, no libfat: xts_crash_handle writes crash.json through the disc guard's
+ * raw API (unless storage is busy/poisoned), and the screen lines are drawn straight into the framebuffer (rows 0-5).
+ * Nothing here returns. */
+void xts_crash_entry(uint32_t vector, uint64_t *ctx, uint32_t depth, uint32_t dsisr)
 {
   static char line[160];
   uint32_t pir;
   asm volatile("mfspr %0, 1023" : "=r"(pir));
-  if (depth >= 1) {                                   /* nested: no stdio, no files; one line on the status row */
+  if (depth >= 1) {                                   /* nested: no files; one line on the status row */
     if (pir == 0) {
       char *o = line, *end = line + sizeof line - 1;
       o = crash_puts(o, end, "XTS: crash inside the crash handler, vector ");
       o = crash_hex(o, end, vector, 4);
       o = crash_puts(o, end, " srr0 ");
       o = crash_hex(o, end, ctx ? ctx[36] : 0, 8);
-      o = crash_puts(o, end, " - power-cycle to resume");
+      o = crash_puts(o, end, " - report may be incomplete; reset to resume");
       *o = 0;
       status_draw(line);
     }
     for (;;) ;
   }
-  xts_crash_handle(vector, ctx);                      /* crash page; PIR 0 in a case: journal CRASH line (fsync'd) */
-  if (pir == 0) {
-    char *o = line, *end = line + sizeof line - 1;
-    o = crash_puts(o, end, "XTS CRASH vector ");
-    o = crash_hex(o, end, vector, 4);
-    o = crash_puts(o, end, " srr0 ");
-    o = crash_hex(o, end, ctx[36], 8);
-    o = crash_puts(o, end, " dar ");
-    o = crash_hex(o, end, ctx[38], 8);
-    o = crash_puts(o, end, " - recorded; reboot to resume");
-    *o = 0;
-    status_draw(line);
-    printf("\n\nXTS CRASH: vector %X srr0 %08X srr1 %016llX dar %08X lr %08X\n", (unsigned)vector, (unsigned)ctx[36],
-           (unsigned long long)ctx[37], (unsigned)ctx[38], (unsigned)ctx[32]);
-    printf("Recorded in the RAM crash page and (inside a case) as a CRASH line in journal.txt.\n"
-           "SMC reboot / power-cycle (or let the watchdog reboot) and boot the same ELF to resume the run.\n");
-  }
+  if (pir == 0) xts_disc_set_notify(NULL);            /* a latch during the report must not printf */
+  xts_crash_handle(vector, ctx, dsisr);               /* PIR 0: crash.json (raw); other PIRs: their RAM slot */
+  if (pir == 0)
+    for (int i = 0; i < XTS_CRASH_LINES; i++) status_draw_row(i, xts_crash_screen[i]);
   for (;;) ;
 }
 
