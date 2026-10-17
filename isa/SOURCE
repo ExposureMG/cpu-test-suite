@@ -1,0 +1,4 @@
+# Vendored ISA table. Refresh: copy OpenXenos isa/xenon_isa.json here, update these three lines, `make check`.
+origin: OpenXenos isa/xenon_isa.json (~/Projects/OpenXenos)
+openxenos_commit: 279d34c520032e3aa9d1fcbd173092a80da6e569
+sha256: ee0f261bc69dc63f4391f12fca4c02bea0ab9a1138b3363a589dd0781011ca98
