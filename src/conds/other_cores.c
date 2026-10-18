@@ -1,13 +1,15 @@
-/* other_cores - load on cores 1 and 2 (PIR 2-5) while a block runs: shared-L2 and memory-bus contention.
+/* other_cores - load on the spare threads of cores 1 and 2 while a block runs: shared-L2 and memory-bus contention.
+ * Cores 1 and 2 carry the suite (PIR 2) and the transmitter (PIR 4), so the loads run on their siblings PIR 3 and PIR 5
+ * only (xts/xcore.h). The suite is idle while the test core measures and the transmitter is fenced, so during a
+ * measurement these two threads are the only other activity.
  *
- *   idle         threads 2-5 in libxenon's wait loop (or still parked at the entry point if nothing started them)
+ *   idle         PIR 3 and 5 in libxenon's wait loop
  *   l2_pressure  each thread: random pointer chase + a store per line over its slice of a 768 KB buffer (L2-resident,
  *                dirty lines: competes for L2 capacity and bandwidth)
  *   mem_stream   each thread: sequential line loads over its own 3 MB slice (memory bandwidth)
- * With -DXTS_WATCHDOG, PIR 4 runs the watchdog and PIR 5 is left alone, so only PIR 2 and 3 carry the load (recorded).
- * Starting threads 2-5 (xenon_thread_startup) and every load start/stop is bounded; a failure -> apply() < 0.
+ * Every load start/stop is bounded; a failure -> apply() < 0.
  * Trap-range indexes 1..3 (xts_exec_trap_range) are reserved for this axis but not used: the load kernels are fixed and
- * never trap, and an unhandled interrupt on PIR 1..5 lands in its RAM thread slot (PIR 0 writes it to crash.json).
+ * never trap, and an unhandled interrupt on PIR 3/5 lands in that PIR's uncached crash slot (reported at the block end).
  * Per block an info record (case "smt:other_cores", metric "info") has per-thread iterations, the rate and temperatures.
  */
 #include <stdio.h>
@@ -92,7 +94,7 @@ static void oc_revert(int v)
     xj_end(&j);
   }
   xj_end(&j);
-  xj_kv_str(&j, "reserved", xts_smt_reserved(4) ? "PIR 4-5 (watchdog)" : "none");
+  xj_kv_str(&j, "reserved", "PIR 0 test, 2 suite, 4 transmitter");
   xj_kv_uint(&j, "iters", total);
   xj_kv_uint(&j, "ops_per_iter", ops);
   xj_kv_uint(&j, "block_ticks", ticks);
@@ -119,4 +121,4 @@ static void oc_revert(int v)
 }
 
 XTS_AXIS(other_cores, .values = oc_values, .apply = oc_apply, .revert = oc_revert, .applies_to = oc_applies, .order = 85,
-         .desc = "load on cores 1 and 2 (PIR 2-5, minus the watchdog's core): idle, L2 pressure, memory stream");
+         .desc = "load on the spare threads of cores 1 and 2 (PIR 3, 5): idle, L2 pressure, memory stream");

@@ -1,0 +1,9 @@
+# XTS quarantine list: cases that crashed or hung the test core in an earlier run. Compiled into every ELF
+# (tools/gen_quarantine.py -> $(BUILD)/gen/quarantine.h); the run skips them with a skip record
+# ("quarantined (quarantine.txt)"). One entry per line:
+#
+#   <family> <case_id>     e.g.  exec.ppc lwz#17
+#   <family> *             the whole family
+#
+# Text after '#' is a comment. tools/xts_recv.py --quarantine-out quarantine.txt appends a suggested line (with the run
+# nonce, vector and srr0 as a comment) for every CRASH/HANG report it receives: review it, then rebuild.

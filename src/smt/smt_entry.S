@@ -4,9 +4,18 @@
  *
  * The worker runs inside libxenon's `secondary` loop task call (32-bit mode, translation on, FP and VMX available,
  * external interrupts off). The kernel owns every register; it is entered with r3 = tcb and ends with a branch (patched
- * in by smtb_install) to xts_smt_exit, which finds this thread's tcb again by PIR (xts_smt_tcbp[]) without trusting any
- * register, restores the C callee-saved state (r1 r2 r13 r14-r31 f14-f31 v20-v31 CR VRSAVE FPSCR VSCR, LR) and returns
- * to the C worker. Layout constants: smt_int.h.
+ * in by smtb_install) to xts_smt_exit, which finds this thread's tcb again without trusting any GPR, restores the C
+ * callee-saved state (r1 r2 r13 r14-r31 f14-f31 v20-v31 CR VRSAVE FPSCR VSCR, LR) and returns to the C worker.
+ * Layout constants: smt_int.h.
+ *
+ * Exit self-check (a hardware crash was once reported with SRR0/LR near xts_smt_exit and DAR 0x3C(0) - consistent with
+ * a NULL tcb in the restore sequence): the tcb is found TWICE and must agree before anything is loaded from it -
+ *   SPRG2 (set by xts_smt_call; per thread, unused by libxenon, and load kernels never touch SPRs) and
+ *   xts_smt_tcbp[PIR] (the table thread 0 filled)
+ * - and the tcb must hold its own address (TCB_SV_SELF) and the PIR that entered (TCB_SV_PIR). On any mismatch nothing
+ * is restored: exit_why = TCB_EXIT_BAD is stored into the table's tcb (if there is one) and the thread parks itself in a
+ * low-priority loop; the C side then times out waiting for DONE and marks the thread lost (logged), instead of the
+ * thread jumping through a garbage LR. xts_smt_call itself refuses a NULL tcb or code address (returns at once).
  */
 #include "smt_int.h"
 
@@ -15,8 +24,17 @@
 	.globl xts_smt_exit
 	.align 7
 xts_smt_call:
+	cmplwi 3, 0
+	beqlr
+	cmplwi 4, 0
+	beqlr
 	mflr 0
 	stw 0, TCB_SV_LR(3)
+	stw 3, TCB_SV_SELF(3)
+	mfspr 0, 1023
+	clrldi 0, 0, 61
+	stw 0, TCB_SV_PIR(3)
+	mtsprg2 3
 	stw 1, TCB_SV_R1(3)
 	stw 2, TCB_SV_R2(3)
 	stw 13, TCB_SV_R13(3)
@@ -96,12 +114,26 @@ xts_smt_call:
 
 	.align 5
 xts_smt_exit:
-	mfspr 3, 1023			/* PIR */
-	clrldi 3, 3, 61			/* & 7 */
-	slwi 3, 3, 2
-	lis 4, xts_smt_tcbp@ha
-	addi 4, 4, xts_smt_tcbp@l
-	lwzx 3, 4, 3			/* r3 = this thread's tcb */
+	mfspr 4, 1023			/* PIR */
+	clrldi 4, 4, 61			/* & 7 */
+	cmplwi 4, 5
+	bgt 9f
+	slwi 5, 4, 2
+	lis 6, xts_smt_tcbp@ha
+	addi 6, 6, xts_smt_tcbp@l
+	lwzx 6, 6, 5			/* r6 = tcb from the table */
+	mfsprg2 3			/* r3 = tcb from SPRG2 */
+	clrldi 3, 3, 32
+	cmplwi 6, 0
+	beq 9f
+	cmplw 3, 6
+	bne 8f
+	lwz 5, TCB_SV_SELF(3)
+	cmplw 5, 3
+	bne 8f
+	lwz 5, TCB_SV_PIR(3)
+	cmplw 5, 4
+	bne 8f
 	li 5, TCB_SV_VSCR
 	lvx 0, 3, 5
 	mtvscr 0
@@ -178,3 +210,8 @@ xts_smt_exit:
 	mtlr 0
 	or 2, 2, 2			/* medium priority again (a same_insn word may have been a priority nop) */
 	blr
+8:	li 5, TCB_EXIT_BAD		/* inconsistent: tell the table's tcb, restore nothing */
+	stw 5, TCB_EXITWHY(6)
+	sync
+9:	or 1, 1, 1			/* park this thread (the C side times out and marks it lost) */
+	b 9b

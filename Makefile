@@ -1,12 +1,14 @@
 # XTS - Xenon CPU test suite.
 #
 #   make [PROFILE=smoke] [BUILD=build]     console ELF: $(BUILD)/xts-$(PROFILE).elf32 (+ check_illegal on it)
-#   make host-test [BUILD=...]             host unit tests (registry, scheduler, journal resume, sinks, fit, encoder, model)
-#   make host-dryrun PROFILE=<p>           run profile <p> on the PC: every block/case, every kernel encoded + decoded back
-#   make host-fatreplay [PROFILE=smoke]    the console's storage stack (sinks/journal -> libfat -> disc guard) on FAT32
-#                                          images with injected USB faults: upstream libfat vs the patched stack
-#   make check [BUILD=...]                 check_encoder (vs xenon-as), check_model (vs results4), check_illegal
-#   make usb USB=/run/media/<you>/<stick>  copy the ELF to <stick>/xenon.elf (XeLL autoloads it)
+#   make host-test [BUILD=...]             host unit tests (registry, scheduler, sink, transport end to end through
+#                                          tools/xts_recv.py, fit, encoder, model) + xts_recv.py --selftest
+#   make host-dryrun PROFILE=<p>           run profile <p> on the PC: every block/case, every kernel encoded + decoded back;
+#                                          the results travel as UDP to tools/xts_recv.py -> $(BUILD)/dryrun-<p>/run/
+#   make check [BUILD=...]                 check_encoder (vs xenon-as), check_model (vs results4), check_illegal, check_records
+#   make recv [OUT=xts-runs]               receive a console run (tools/xts_recv.py: listens on UDP 36360, writes
+#                                          OUT/<console_tag>/<run_nonce>/); RECV_ARGS="--keep-listening" for several runs
+#   make usb USB=/run/media/<you>/<stick>  copy the ELF to <stick>/xenon.elf (XeLL autoloads it) and unmount; nothing else
 #   make clean [BUILD=...]
 #
 # Everything a build writes goes below $(BUILD) (generated code in $(BUILD)/gen), so parallel builds with different
@@ -32,8 +34,6 @@ GEN := $(BUILD)/gen
 CON := $(BUILD)/console
 HST := $(BUILD)/host
 SF := third_party/softfloat-3e
-LIBFAT := third_party/libfat
-USBFIX := third_party/libxenon-usb
 
 XPREFIX := $(DEVKITXENON)/bin/xenon-
 XCC := $(XPREFIX)gcc
@@ -53,49 +53,76 @@ include $(SF)/sources.mk
 
 # ---------------------------------------------------------------------------------------------------- build id
 GIT_HASH := $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)$(shell git diff --quiet HEAD 2>/dev/null || echo -dirty)
-SRC_HASH := $(shell cat $(sort $(ALL_SRCS) $(CON_ASM) $(wildcard include/xts/*.h profiles/*.c tools/*.py $(LIBFAT)/source/* $(USBFIX)/*.[ch])) isa/xenon_isa.json 2>/dev/null | sha256sum | cut -c1-12)
+SRC_HASH := $(shell cat $(sort $(ALL_SRCS) $(CON_ASM) $(wildcard include/xts/*.h src/*/*.h profiles/*.c tools/*.py quarantine.txt)) isa/xenon_isa.json 2>/dev/null | sha256sum | cut -c1-12)
 BUILD_ID := $(GIT_HASH)-$(SRC_HASH)
 
 # ---------------------------------------------------------------------------------------------------- options
-# WATCHDOG=1: hang watchdog thread on PIR 4 (SMC reboot -> XeLL reloads xenon.elf -> journal resumes); off by default.
-# SPEED_RISKY=1: allow the speed axis to change the CPU speed code (unverified on hardware); off by default.
-# USB_FIX=1 (default): link the patched USB mass-storage driver (third_party/libxenon-usb, XTS-PATCHES.md) ahead of
-#   libxenon.a, replacing its tinyehci.o; USB_FIX=0 links libxenon's own driver.
-WATCHDOG ?= 0
-SPEED_RISKY ?= 0
-USB_FIX ?= 1
-OPT_DEFS := $(if $(filter 1,$(WATCHDOG)),-DXTS_WATCHDOG) $(if $(filter 1,$(SPEED_RISKY)),-DXTS_SPEED_RISKY) \
-            $(if $(filter 1,$(USB_FIX)),-DXTS_USB_FIX)
+# CFLAGS_EXTRA: extra compiler flags for every object, e.g. -DXTS_CRUMB_EVERY_TIMING=4 (breadcrumb cadence of the
+#   non-self/semantic families, src/core/main.c).
+OPT_DEFS :=
+# Network destination of the results (console builds):
+#   NET_DEST=            (default) UDP broadcast to every host on the LAN - fine when the receiver is wired.
+#   NET_DEST=auto        unicast to THIS PC: its IPv4 address and MAC are read now from the default-route interface.
+#   NET_DEST=<a.b.c.d> NET_DEST_MAC=<aa:bb:cc:dd:ee:ff>   unicast to another receiver.
+#   Unicast is strongly recommended when the receiver is on Wi-Fi: unicast frames get link-layer retries, broadcast
+#   frames do not. The console resolves the MAC by ARP (the compiled-in MAC is used only by NET_DRIVER=own).
+# NET_FPS: frame copies per second (default 2000 broadcast, 1000 unicast). NET_COPIES: copies per frame (default 2).
+NET_DEST ?=
+NET_DEST_MAC ?=
+ifeq ($(NET_DEST),auto)
+  NET_IFACE := $(shell ip -4 route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($$i=="dev"){print $$(i+1); exit}}')
+  NET_DEST_RESOLVED := $(shell ip -4 -o addr show dev $(NET_IFACE) 2>/dev/null | awk '{split($$4,a,"/"); print a[1]; exit}')
+  NET_DEST_MAC := $(shell cat /sys/class/net/$(NET_IFACE)/address 2>/dev/null)
+else
+  NET_DEST_RESOLVED := $(NET_DEST)
+endif
+ifneq ($(NET_DEST_RESOLVED),)
+  ifeq ($(NET_DEST_MAC),)
+    $(error NET_DEST=$(NET_DEST) needs NET_DEST_MAC=aa:bb:cc:dd:ee:ff (or use NET_DEST=auto on the receiving PC))
+  endif
+  NET_IP_HEX := $(shell echo $(NET_DEST_RESOLVED) | awk -F. 'NF==4{printf "0x%02X%02X%02X%02Xu", $$1,$$2,$$3,$$4}')
+  NET_MAC_C := $(shell echo $(NET_DEST_MAC) | awk -F: 'NF==6{printf "0x%s,0x%s,0x%s,0x%s,0x%s,0x%s", $$1,$$2,$$3,$$4,$$5,$$6}')
+  ifeq ($(NET_IP_HEX),)
+    $(error NET_DEST=$(NET_DEST_RESOLVED) is not an IPv4 address)
+  endif
+  ifeq ($(NET_MAC_C),)
+    $(error NET_DEST_MAC=$(NET_DEST_MAC) is not a MAC address)
+  endif
+  OPT_DEFS += -DXTS_NET_DEST_IP=$(NET_IP_HEX) '-DXTS_NET_DEST_MAC=$(NET_MAC_C)'
+  NET_FPS ?= 1000
+else
+  NET_FPS ?= 2000
+endif
+NET_COPIES ?= 2
+# NET_SETTLE_S: seconds to wait after the Ethernet link comes up before sending (default 10): the NIC bring-up resets
+#   the PHY and many switches/routers do not forward for several seconds after a port's link returns.
+NET_SETTLE_S ?= 10
+OPT_DEFS += -DXTS_NET_SETTLE_S=$(NET_SETTLE_S)
+# NET_DRIVER=own: XTS's own TX-only descriptor driver (default: libxenon's enet.c driver, proven on hardware).
+NET_DRIVER ?=
+ifeq ($(NET_DRIVER),own)
+  OPT_DEFS += -DXTS_NET_OWN_DRIVER=1
+endif
+OPT_DEFS += -DXTS_NET_FPS=$(NET_FPS) -DXTS_NET_COPIES=$(NET_COPIES)
 # every object depends on this stamp, so changing an option (or CFLAGS_EXTRA) rebuilds everything
 OPT_STAMP := $(BUILD)/.options
 $(shell mkdir -p $(BUILD); echo '$(OPT_DEFS) $(CFLAGS_EXTRA)' | cmp -s - $(OPT_STAMP) || echo '$(OPT_DEFS) $(CFLAGS_EXTRA)' > $(OPT_STAMP))
 
 # ---------------------------------------------------------------------------------------------------- flags
-COMMON_INC := -Iinclude -Isrc -I$(GEN) -I$(SF)/source/include -I$(LIBFAT)/include   # -Isrc: framework-private <core/..> <exec/..> <model/..> <plat/..>
+COMMON_INC := -Iinclude -Isrc -I$(GEN) -I$(SF)/source/include   # -Isrc: framework-private <core/..> <exec/..> <model/..> <plat/..>
 XMACHDEP := -mcpu=cell -mtune=cell -maltivec -m32 -mpowerpc64 -mhard-float -fno-pic -DBYTE_ORDER=BIG_ENDIAN
 XCFLAGS := -std=gnu11 -g -O2 -Wall -Wextra -Wno-unused-parameter -Wno-format -Wno-missing-field-initializers -Wno-format-truncation \
            -ffunction-sections -fdata-sections -fwrapv -fno-strict-aliasing $(XMACHDEP) -DXTS_CONSOLE \
            $(COMMON_INC) -I$(SF)/platform/console -I$(DEVKITXENON)/usr/include $(OPT_DEFS) $(CFLAGS_EXTRA)
 XASFLAGS := -x assembler-with-cpp $(XMACHDEP) -Wa,-mvmx128 -DXTS_CONSOLE $(OPT_DEFS) -Iinclude -I$(DEVKITXENON)/usr/include
 HCFLAGS := -std=gnu11 -g -O1 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-format-truncation -fwrapv \
-           -fno-strict-aliasing -DXTS_HOST $(COMMON_INC) -I$(SF)/platform/host -I$(LIBFAT)/host/include $(HOST_SAN) $(OPT_DEFS) \
+           -fno-strict-aliasing -DXTS_HOST $(COMMON_INC) -I$(SF)/platform/host $(HOST_SAN) $(OPT_DEFS) \
            $(CFLAGS_EXTRA)
 SF_DEFS := -DSOFTFLOAT_FAST_INT64 -DSOFTFLOAT_ROUND_ODD -DINLINE_LEVEL=5 -DSOFTFLOAT_FAST_DIV32TO16 -DSOFTFLOAT_FAST_DIV64TO32
 SF_INC := -I$(SF)/source/PowerPC -I$(SF)/source/include
-# vendored libfat (third_party/libfat, XTS-PATCHES.md): built with the console's machine flags / the host's sanitizers.
-# The upstream copy ($(LIBFAT)/upstream) is built for the host only, for host-fatreplay's comparison.
-LIBFAT_WARN := -Wall -Wno-pointer-compare -Wno-unused-function
-LIBFAT_XCFLAGS := -std=gnu11 -g -O2 $(XMACHDEP) -ffunction-sections -fdata-sections -fwrapv -fno-strict-aliasing -DLIBXENON \
-                  -DXENON $(LIBFAT_WARN) -I$(DEVKITXENON)/usr/include
-LIBFAT_HCFLAGS := -std=gnu11 -g -O1 -fwrapv -fno-strict-aliasing -DLIBXENON $(LIBFAT_WARN) -Wno-pointer-to-int-cast \
-                  -Wno-int-to-pointer-cast -include $(LIBFAT)/host/xts_host_libfat.h -I$(LIBFAT)/host/include $(HOST_SAN)
-# patched USB driver: libxenon's own flags (ports/xenon/Makefile), the patches are the only difference
-USBFIX_CFLAGS := -g -mcpu=cell -mtune=cell -Os -maltivec -ffunction-sections -fdata-sections -fwrapv -Wall -Wno-format \
-                 -Wno-attributes -Wno-address-of-packed-member -DBYTE_ORDER=BIG_ENDIAN -m32 -fno-pic -mpowerpc64 -D_CFE_=1 \
-                 -DENDIAN_BIG=1 -I$(USBFIX) -I$(DEVKITXENON)/usr/include
 
 # ---------------------------------------------------------------------------------------------------- generated code
-GEN_HDRS := $(GEN)/isa_table.h $(GEN)/build_id.h
+GEN_HDRS := $(GEN)/isa_table.h $(GEN)/build_id.h $(GEN)/quarantine.h
 
 $(GEN)/isa_table.c $(GEN)/isa_table.h &: tools/gen_isa.py isa/xenon_isa.json include/xts/isa.h
 	@mkdir -p $(GEN)
@@ -105,6 +132,11 @@ $(GEN)/isa_table.c $(GEN)/isa_table.h &: tools/gen_isa.py isa/xenon_isa.json inc
 $(GEN)/slot.S: tools/gen_slot.py
 	@mkdir -p $(GEN)
 	$(PYTHON) -B tools/gen_slot.py > $@.tmp && mv $@.tmp $@
+
+# the compiled-in quarantine list (src/core/main.c skips these cases)
+$(GEN)/quarantine.h: quarantine.txt tools/gen_quarantine.py
+	@mkdir -p $(GEN)
+	$(PYTHON) -B tools/gen_quarantine.py quarantine.txt > $@.tmp && mv $@.tmp $@
 
 # build_id.h changes only when the id does (no needless rebuilds)
 $(GEN)/build_id.h: FORCE
@@ -154,39 +186,22 @@ $(CON)/libsoftfloat.a: $(CON_SF_OBJS)
 
 XLIBGCC = $(shell $(XCC) $(XMACHDEP) -print-libgcc-file-name)
 
-CON_FAT_OBJS := $(patsubst $(LIBFAT)/source/%.c,$(CON)/libfat/%.o,$(wildcard $(LIBFAT)/source/*.c))
-$(CON)/libfat/%.o: $(LIBFAT)/source/%.c $(wildcard $(LIBFAT)/source/*.h $(LIBFAT)/include/*.h)
-	@mkdir -p $(@D)
-	$(XCC) $(LIBFAT_XCFLAGS) -I$(LIBFAT)/include -c $< -o $@
-$(CON)/libfat.a: $(CON_FAT_OBJS)
-	@rm -f $@
-	$(XPREFIX)ar crs $@ $^
-# one translation unit, like libxenon's tinyehci.o (tinyehci.c includes ehci.c, which includes usb2.c and usbstorage.c)
-$(CON)/usbfix/tinyehci.o: $(wildcard $(USBFIX)/*.c $(USBFIX)/*.h)
-	@mkdir -p $(@D)
-	$(XCC) $(USBFIX_CFLAGS) -c $(USBFIX)/tinyehci.c -o $@
-CON_USB_OBJ := $(if $(filter 1,$(USB_FIX)),$(CON)/usbfix/tinyehci.o)
-
-# Objects before the archives: the patched except.o (and with USB_FIX=1 the patched tinyehci.o, which defines every
-# symbol of libxenon.a(tinyehci.o)) come first, so the archive members are not pulled in; a member that still got pulled
-# in would collide (multiple definition) and fail the link. libfat is the vendored one ($(CON)/libfat.a, no -lfat).
-# The map check below fails the build if the link used anything else.
-$(ELF): $(CON_OBJS) $(CON)/obj/profiles/$(PROFILE).o $(CON)/libsoftfloat.a $(CON)/libfat.a $(CON_USB_OBJ) tools/xts.lds
-	$(XLD) -melf32ppc $(CON_OBJS) $(CON_USB_OBJ) $(CON)/obj/profiles/$(PROFILE).o $(CON)/libsoftfloat.a $(CON)/libfat.a \
+# Objects before the archives: the patched except.o comes first, so libxenon.a(except.o) is not pulled in (a member that
+# still got pulled in would collide and fail the link). The map/symbol checks fail the build if the console ELF contains
+# any storage code: libfat, libxenon's USB stack (the console never touches USB; XeLL loads xenon.elf), or a file API.
+CON_FORBIDDEN_OBJS := libfat|\((tinyehci|usbmass|usbmain|usbctrl|usbd|usbhub|usbhid|usbdevs|usb_os|ohci|ata|iso9660)\.o\)
+CON_FORBIDDEN_SYMS := fatMount|fatInitDefault|fatUnmount|usb_init|usb_do_poll|USBStorage_[A-Za-z_]*|fopen|_fopen_r|xenon_ata_init
+$(ELF): $(CON_OBJS) $(CON)/obj/profiles/$(PROFILE).o $(CON)/libsoftfloat.a tools/xts.lds
+	$(XLD) -melf32ppc $(CON_OBJS) $(CON)/obj/profiles/$(PROFILE).o $(CON)/libsoftfloat.a \
 	  --gc-sections -Map $(CON)/xts-$(PROFILE).map -L$(DEVKITXENON)/usr/lib -L$(DEVKITXENON)/xenon/lib/32 \
 	  --start-group -lxenon -lm -lc $(XLIBGCC) --end-group -n -T tools/xts.lds -o $@
 	@map=$(CON)/xts-$(PROFILE).map; \
-	 if grep -q 'libfat\.a(' $$map && grep 'libfat\.a(' $$map | grep -qv '$(CON)/libfat\.a('; then echo "link map: a libfat other than $(CON)/libfat.a was linked" >&2; rm -f $@; exit 1; fi; \
-	 grep -q '$(CON)/libfat\.a(libfat\.o)' $$map || { echo "link map: vendored libfat.o not linked" >&2; rm -f $@; exit 1; }; \
 	 if grep -q 'libxenon\.a(except\.o)' $$map; then echo "link map: libxenon.a(except.o) was pulled in" >&2; rm -f $@; exit 1; fi; \
-	 if [ "$(USB_FIX)" = 1 ]; then \
-	   if grep -q 'libxenon\.a(tinyehci\.o)' $$map; then echo "link map: libxenon.a(tinyehci.o) pulled in despite USB_FIX=1" >&2; rm -f $@; exit 1; fi; \
-	   $(XPREFIX)nm $@ | grep -q ' T USBStorage_Write_Sectors$$' || { echo "USB_FIX=1: USBStorage_Write_Sectors missing" >&2; rm -f $@; exit 1; }; \
-	   echo "link map: USB driver = $(CON)/usbfix/tinyehci.o (patched), libfat = $(CON)/libfat.a (vendored)"; \
-	 else \
-	   grep -q 'libxenon\.a(tinyehci\.o)' $$map || { echo "link map: USB_FIX=0 but libxenon.a(tinyehci.o) not linked" >&2; rm -f $@; exit 1; }; \
-	   echo "link map: USB driver = libxenon.a(tinyehci.o) (unpatched), libfat = $(CON)/libfat.a (vendored)"; \
-	 fi
+	 bad=`grep -oE '$(CON_FORBIDDEN_OBJS)' $$map | sort -u | tr '\n' ' '`; \
+	 if [ -n "$$bad" ]; then echo "link map: storage/USB objects linked: $$bad" >&2; rm -f $@; exit 1; fi; \
+	 bad=`$(XPREFIX)nm $@ | grep -E ' [TtWw] ($(CON_FORBIDDEN_SYMS))$$' | awk '{print $$3}' | tr '\n' ' '`; \
+	 if [ -n "$$bad" ]; then echo "console ELF defines storage/file symbols: $$bad" >&2; rm -f $@; exit 1; fi; \
+	 echo "link map: no libfat, no USB stack, no file API in the console ELF"
 
 $(ELF32): $(ELF) tools/check_illegal.py
 	$(XOBJCOPY) -O elf32-powerpc --adjust-vma 0x80000000 $< $@
@@ -215,24 +230,7 @@ $(HST)/libsoftfloat.a: $(HST_SF_OBJS)
 	ar crs $@ $^
 
 HOST_LINK = $(HOSTCC) $(HOST_SAN) -o $@ $^ -lm
-# binaries with the platform layer: libfat on images (XTS_HOST_STORAGE=image:<file>) through the stdio bridge
-HOST_WRAP := -Wl,--wrap=fopen,--wrap=remove,--wrap=mkdir,--wrap=stat,--wrap=fsync,--wrap=fileno
-HOST_PLAT_LINK = $(HOSTCC) $(HOST_SAN) $(HOST_WRAP) -o $@ $(filter %.o,$^) $(filter %.a,$^) -lm
-
-HST_FAT_OBJS := $(patsubst $(LIBFAT)/source/%.c,$(HST)/libfat/%.o,$(wildcard $(LIBFAT)/source/*.c))
-HST_FATUP_OBJS := $(patsubst $(LIBFAT)/upstream/source/%.c,$(HST)/libfat-upstream/%.o,$(wildcard $(LIBFAT)/upstream/source/*.c))
-$(HST)/libfat/%.o: $(LIBFAT)/source/%.c $(wildcard $(LIBFAT)/source/*.h $(LIBFAT)/include/*.h $(LIBFAT)/host/include/*/*.h)
-	@mkdir -p $(@D)
-	$(HOSTCC) $(LIBFAT_HCFLAGS) -I$(LIBFAT)/include -c $< -o $@
-$(HST)/libfat-upstream/%.o: $(LIBFAT)/upstream/source/%.c $(wildcard $(LIBFAT)/upstream/source/*.h)
-	@mkdir -p $(@D)
-	$(HOSTCC) $(LIBFAT_HCFLAGS) -I$(LIBFAT)/upstream/include -c $< -o $@
-$(HST)/libfat.a: $(HST_FAT_OBJS)
-	@rm -f $@
-	ar crs $@ $^
-$(HST)/libfat-upstream.a: $(HST_FATUP_OBJS)
-	@rm -f $@
-	ar crs $@ $^
+HOST_PLAT_LINK = $(HOSTCC) $(HOST_SAN) -o $@ $(filter %.o,$^) $(filter %.a,$^) -lm
 
 ENC_OBJS := $(HST)/obj/src/enc/enc.o $(HST)/obj/src/enc/isa.o $(HST)/gen/isa_table.o
 MODEL_OBJS := $(patsubst %.c,$(HST)/obj/%.o,$(wildcard src/model/*.c)) $(HST)/obj/src/exec/state.o $(ENC_OBJS)
@@ -241,35 +239,25 @@ $(HST)/xts-enc-cli: $(HST)/obj/host/enc_cli.o $(ENC_OBJS)
 	$(HOST_LINK)
 $(HST)/xts-model-replay: $(HST)/obj/host/model_replay.o $(MODEL_OBJS) $(HST)/libsoftfloat.a
 	$(HOST_LINK)
-$(HST)/xts-host-test: $(HST)/obj/host/test_main.o $(patsubst %.c,$(HST)/obj/%.o,$(HOST_TEST_SRCS)) $(HST_OBJS) $(HST)/libsoftfloat.a \
-                      $(HST)/libfat.a
+$(HST)/xts-host-test: $(HST)/obj/host/test_main.o $(patsubst %.c,$(HST)/obj/%.o,$(HOST_TEST_SRCS)) $(HST_OBJS) $(HST)/libsoftfloat.a
 	$(HOST_PLAT_LINK)
-$(HST)/xts-dryrun-$(PROFILE): $(HST)/obj/host/dryrun_main.o $(HST_OBJS) $(HST)/obj/profiles/$(PROFILE).o $(HST)/libsoftfloat.a \
-                              $(HST)/libfat.a
-	$(HOST_PLAT_LINK)
-# the same program twice: with the patched libfat and with upstream libfat (the disc guard is switched at run time)
-$(HST)/xts-fatreplay-$(PROFILE): $(HST)/obj/host/fatreplay.o $(HST_OBJS) $(HST)/obj/profiles/$(PROFILE).o $(HST)/libsoftfloat.a \
-                                 $(HST)/libfat.a
-	$(HOST_PLAT_LINK)
-$(HST)/xts-fatreplay-upstream-$(PROFILE): $(HST)/obj/host/fatreplay.o $(HST_OBJS) $(HST)/obj/profiles/$(PROFILE).o \
-                                          $(HST)/libsoftfloat.a $(HST)/libfat-upstream.a
+$(HST)/xts-dryrun-$(PROFILE): $(HST)/obj/host/dryrun_main.o $(HST_OBJS) $(HST)/obj/profiles/$(PROFILE).o $(HST)/libsoftfloat.a
 	$(HOST_PLAT_LINK)
 
 host-tools: $(HST)/xts-enc-cli $(HST)/xts-model-replay
 
+# host tests start tools/xts_recv.py themselves (XTS_PYTHON / XTS_RECV) for the end-to-end transport tests
 host-test: $(HST)/xts-host-test
 	rm -rf $(BUILD)/host-test
-	ASAN_OPTIONS=detect_leaks=0 $(HST)/xts-host-test --tmp $(BUILD)/host-test
+	$(PYTHON) -B tools/xts_recv.py --selftest
+	ASAN_OPTIONS=detect_leaks=0 XTS_PYTHON=$(PYTHON) XTS_RECV=tools/xts_recv.py $(HST)/xts-host-test --tmp $(BUILD)/host-test
 
+# the dry run sends its results as UDP to a receiver on an ephemeral localhost port (xts_recv.py --exec sets
+# XTS_NET_HOST for the child); the received run directory is $(BUILD)/dryrun-$(PROFILE)/run
 host-dryrun: $(HST)/xts-dryrun-$(PROFILE)
 	rm -rf $(BUILD)/dryrun-$(PROFILE)
-	ASAN_OPTIONS=detect_leaks=0 XTS_QUIET=1 $(HST)/xts-dryrun-$(PROFILE) --root $(BUILD)/dryrun-$(PROFILE)
-
-# FATREPLAY_ARGS: e.g. "--runs 20 --rate 0.004" (host/fatreplay.c --help)
-host-fatreplay: $(HST)/xts-fatreplay-$(PROFILE) $(HST)/xts-fatreplay-upstream-$(PROFILE) tools/fat_mkimage.py tools/fat_check.py
-	rm -rf $(BUILD)/fatreplay-$(PROFILE)
-	ASAN_OPTIONS=detect_leaks=0 XTS_QUIET=1 $(HST)/xts-fatreplay-$(PROFILE) --upstream $(HST)/xts-fatreplay-upstream-$(PROFILE) \
-	  --work $(BUILD)/fatreplay-$(PROFILE) --python $(PYTHON) $(FATREPLAY_ARGS)
+	ASAN_OPTIONS=detect_leaks=0 XTS_QUIET=1 $(PYTHON) -B tools/xts_recv.py --once --quiet --port 0 \
+	  --run-dir $(BUILD)/dryrun-$(PROFILE)/run --exec $(HST)/xts-dryrun-$(PROFILE)
 
 # ---------------------------------------------------------------------------------------------------- checks
 check-encoder: $(HST)/xts-enc-cli
@@ -285,14 +273,47 @@ check-illegal: $(ELF32)
 # against a snapshot (write one with: tools/check_records.py <run> --write-keys FILE). smoke has a record budget.
 SMOKE_BUDGET ?= 500
 check-records: host-dryrun
-	$(PYTHON) -B tools/check_records.py $(BUILD)/dryrun-$(PROFILE)/xts/host/0001 $(if $(KEYS),--keys-baseline $(KEYS)) \
+	$(PYTHON) -B tools/check_records.py $(BUILD)/dryrun-$(PROFILE)/run $(if $(KEYS),--keys-baseline $(KEYS)) \
 	  $(if $(filter smoke,$(PROFILE)),--max-records $(SMOKE_BUDGET))
 
 check: check-encoder check-model check-illegal check-records
 
 usb: $(ELF32)
 	@test -n "$(USB)" || (echo "usage: make usb USB=/path/to/mounted/stick [PROFILE=...]" >&2; exit 1)
-	tools/usb_install.sh $(ELF32) $(USB)
+	tools/install_elf.sh $(ELF32) $(USB)
+
+# TFTP boot: XeLL fetches xenon.elf over TFTP (point it at this PC with tftp_server=<ip> in kboot.conf). The server
+# (tools/xts_tftp.py, library tftpy in a venv under $(BUILD)) answers ONLY "xenon.elf" with this profile's ELF, refuses
+# every other name (XeLL also asks for NAND/XeLL update images) and every upload. Port 69 needs root: it runs via sudo.
+VENV := $(BUILD)/venv
+$(VENV)/.ok: tools/requirements.txt
+	$(PYTHON) -m venv $(VENV)
+	$(VENV)/bin/pip install -q -r tools/requirements.txt
+	touch $@
+
+serve: $(ELF32) $(VENV)/.ok
+	@echo "serving $(ELF32) as xenon.elf on UDP port 69 (sudo)"
+	sudo $(VENV)/bin/python -B tools/xts_tftp.py --elf $(ELF32)
+
+# kboot.conf for the USB stick that makes XeLL fetch xenon.elf from THIS PC over TFTP. XeLL needs "#KBOOTCONFIG" as the
+# first line and at least one kernel entry; an entry whose file is not on the stick falls back to TFTP from tftp_server.
+# TFTP_SERVER=<ip> overrides the address (default: this PC's address on the default-route interface).
+TFTP_SERVER ?= $(shell ip -4 -o addr show dev $$(ip -4 route show default | awk '{for(i=1;i<=NF;i++) if($$i=="dev"){print $$(i+1); exit}}') 2>/dev/null | awk '{split($$4,a,"/"); print a[1]; exit}')
+kbootconf:
+	@test -n "$(TFTP_SERVER)" || (echo "kbootconf: could not find this PC's address; use TFTP_SERVER=<ip>" >&2; exit 1)
+	@mkdir -p $(BUILD)
+	@printf '#KBOOTCONFIG\n; generated by make kbootconf - copy to the root of the USB stick (no xenon.elf on the stick)\ntftp_server=%s\ntimeout=0\nxts="xenon.elf"\n' $(TFTP_SERVER) > $(BUILD)/kboot.conf
+	@echo "wrote $(BUILD)/kboot.conf (tftp_server=$(TFTP_SERVER)):"; cat $(BUILD)/kboot.conf
+
+check-tftp: $(VENV)/.ok
+	$(VENV)/bin/python -B tools/xts_tftp.py --selftest
+
+OUT ?= xts-runs
+recv:
+	$(PYTHON) -B tools/xts_recv.py --out $(OUT) $(RECV_ARGS)
+
+check-recv:
+	$(PYTHON) -B tools/xts_recv.py --selftest
 
 bootstrap:
 	XTS_DEVKITXENON=$(DEVKITXENON) LIBXENON_SRC=$(LIBXENON_SRC) tools/bootstrap.sh
@@ -301,6 +322,6 @@ clean:
 	rm -rf $(BUILD)
 
 FORCE:
-.PHONY: all host-tools host-test host-dryrun host-fatreplay check check-encoder check-model check-illegal check-records usb bootstrap clean FORCE
+.PHONY: all host-tools host-test host-dryrun serve kbootconf check-tftp recv check-recv check check-encoder check-model check-illegal check-records usb bootstrap clean FORCE
 
 -include $(shell find $(BUILD) -name '*.d' 2>/dev/null)

@@ -1,12 +1,14 @@
-/* XTS - hardware thread control (src/smt): load kernels on the sibling thread (PIR 1) and on cores 1/2 (PIR 2-5), park and
- * wake the sibling, the speed change and the watchdog thread. Used by src/conds/{sibling,other_cores,speed}.c; families
- * may include <smt/smt.h> to read the sibling's throughput around their last run (two-sided contention data).
+/* XTS - hardware thread control (src/smt): load kernels on the test core's sibling (PIR 1) and on the spare threads of
+ * cores 1/2 (PIR 3 and 5), park and wake the sibling. Used by src/conds/{sibling,other_cores}.c; families may include
+ * <smt/smt.h> to read the sibling's throughput around their last run (two-sided contention data).
  *
- * Threads: libxenon starts thread 0 (us) and thread 1 (sibling) at boot; threads 2-5 wait until xenon_thread_startup().
- * An idle thread spins in libxenon's `secondary` loop at `or 1,1,1` polling its wait[] slot; a task is queued with
- * xenon_run_thread_task(pir, stack, entry). Our worker sets STARTED, runs a JIT-built load kernel until STOP, sets DONE
- * and returns to that loop. Every wait has a timeout; a thread that does not answer becomes LOST and is never used again
- * in this boot (apply() returns <0, the block is recorded as skip). Nothing here touches the CPU key or fuses.
+ * Roles (xts/xcore.h): PIR 0 test executor, PIR 2 suite (this code runs there), PIR 4 transmitter - all three are
+ * reserved (xts_smt_reserved). An idle spare thread spins in libxenon's `secondary` loop at `or 1,1,1` polling its
+ * wait[] slot; a task is queued there. Our worker sets STARTED, runs a JIT-built load kernel until STOP, sets DONE and
+ * returns to that loop. Core-0 state (CTRL[TE1], TSCR) is read and written ON core 0 (a remote call to the test core).
+ * Every wait has a timeout; a thread that does not answer becomes LOST and is never used again in this boot (apply()
+ * returns <0, the block is recorded as skip). There is no watchdog and no speed change any more (the speed code is only
+ * read). Nothing here touches the CPU key or fuses.
  */
 #ifndef XTS_SMT_H
 #define XTS_SMT_H
@@ -23,7 +25,6 @@ enum xts_smt_load {
   XTS_SMT_BUSY_LD,        /* independent L1-resident loads (same_insn fallback for load/store words) */
   XTS_SMT_L2_PRESSURE,    /* random chase + store over an L2-sized slice (768 KB total) */
   XTS_SMT_MEM_STREAM,     /* sequential line loads over a 3 MB slice per thread */
-  XTS_SMT_WATCHDOG,       /* the watchdog loop (PIR 4) */
   XTS_SMT_NLOADS
 };
 const char *xts_smt_load_name(int load);
@@ -42,6 +43,7 @@ const char *xts_smt_state_name(int st);
 #define XTS_SMT_E_CORES    -8   /* threads 2-5 did not come up */
 #define XTS_SMT_E_BUILD    -9   /* kernel build / allocation failed */
 #define XTS_SMT_E_STATE    -10  /* thread not in the state the call needs */
+#define XTS_SMT_E_EXIT     -11  /* the kernel exit path found an inconsistent TCB (smt_entry.S self-check) */
 const char *xts_smt_err_name(int e);
 
 /* x->aux_status bits set by the SMT exec hooks */
@@ -60,11 +62,14 @@ int xts_smt_start(int pir, int load, const uint32_t *words, int nwords);   /* wo
 int xts_smt_stop(int pir);                                /* 0, or <0 (thread now LOST) */
 int xts_smt_park(void);                                   /* sibling (PIR 1) only; verified by CTRL[TE1] readback */
 int xts_smt_wake(void);
-int xts_smt_cores_start(int load, int *pirs_out);         /* load on every usable PIR of 2-5; all or nothing */
-int xts_smt_all_idle(void);                               /* 1 if no thread runs a load or is parked (watchdog ignored) */
+int xts_smt_cores_start(int load, int *pirs_out);         /* load on PIR 3 and 5 (the spare threads); all or nothing */
+int xts_smt_all_idle(void);                               /* 1 if no thread runs a load or is parked */
 uint32_t xts_smt_iters(int pir);                          /* heartbeat / outer-loop counter (wraps) */
 uint32_t xts_smt_ops_per_iter(int pir);                   /* body instructions per outer iteration of the current load */
-int xts_smt_reserved(int pir);                            /* 1: reserved for the watchdog */
+int xts_smt_reserved(int pir);                            /* 1: a role thread (PIR 0 test, 2 suite, 4 transmitter) */
+/* exit path self-check of the last finished load on pir: 1 = the kernel returned through xts_smt_exit with a consistent
+ * TCB (exit_why 1), 0 = not run yet, <0 = XTS_SMT_E_EXIT */
+int xts_smt_exit_check(int pir);
 
 /* same_insn: pick the words of a run that are safe to loop on another thread (user-mode, executes, integer/FP/vector
  * unit, no memory/branch/LR/CTR/SPR effects). Returns the number kept in out (<= max); *fallback = load to run instead
@@ -92,15 +97,6 @@ void xts_smt_info_begin(struct xts_json *j, const char *axis, const char *value)
 void xts_smt_emit_info(const char *axis, double value, const char *unit, const char *detail);
 int xts_smt_temps_json(struct xts_json *j, const char *key);                         /* SMC temps as {cpu,gpu,edram,board} */
 
-/* ---- speed ---- */
+/* ---- speed (read only: the code XeLL left; changing it is no longer supported) ---- */
 int xts_smt_speed_get(void);
-int xts_smt_speed_set(int code, char *why, int why_size);   /* refuses unless every thread is idle; pauses the watchdog */
-
-/* ---- watchdog (always compiled; xts_watchdog_* call it only with -DXTS_WATCHDOG) ---- */
-int xts_smt_wd_start(uint32_t timeout_ms);
-void xts_smt_wd_kick(void);
-void xts_smt_wd_stop(void);
-int xts_smt_wd_running(void);
-int xts_smt_wd_fired(void);              /* host test: the simulated watchdog saw a timeout */
-void xts_smt_wd_set_timeout(uint32_t ms);   /* change the timeout of a running watchdog (e.g. one long block) */
 #endif

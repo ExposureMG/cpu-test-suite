@@ -1,9 +1,19 @@
-/* Exec engine, console backend: runs cases through the generated slot (slot.S) and the kernel buffer. */
+/* Exec engine, console backend: runs cases through the generated slot (slot.S) and the kernel buffer.
+ *
+ * Cores (xts/xcore.h): this code runs on the SUITE core (PIR 2) - it prepares the input image, writes the slot word or
+ * the kernel (dcbst + sync + icbi here, xts_sync_code), runs the exec hooks - and hands the timed part to the TEST core
+ * (PIR 0) through xts_core_xc_call: slot_job() runs there after the executor's sync; isync, reads the C runtime
+ * FPSCR/VSCR/VRSAVE, takes the timebase around xts_slot_run and reads the in-case trap record. The 0x600/0x700 stubs
+ * record in-case traps in the HV context block of the thread that trapped (SPRG1); that is PIR 0's block, addressed
+ * explicitly (xts_xc_test_ctx_real), never the caller's SPRG1. A crash or hang of the test core does not return here
+ * (xts_core_xc_call -> xts_core_test_core_lost). xts_touch_range runs on the test core too (it is about ITS caches). */
 #include <stdio.h>
 #include <string.h>
 #include <ppc/cache.h>
 #include <xts/xts.h>
 #include <exec/exec_priv.h>
+#include <core/core.h>              /* xts_core_xc_call */
+#include <plat/xcore_console.h>     /* xts_xc_test_ctx_real, xts_xc_mypir */
 
 extern int xts_slot_run(const void *in, void *out);
 extern volatile uint32_t xts_slot_insn[];
@@ -46,19 +56,23 @@ void xts_dcbf_range(void *addr, uint32_t len)
   asm volatile("sync" ::: "memory");
 }
 
-void xts_touch_range(const void *addr, uint32_t len)
+static void touch_job(void *a, void *b)
 {
   volatile uint32_t sink = 0;
-  for (uint32_t o = 0; o < len; o += 128) sink += *(const volatile uint32_t *)((const uint8_t *)addr + o);
+  uint32_t len = (uint32_t)b;
+  for (uint32_t o = 0; o < len; o += 128) sink += *(const volatile uint32_t *)((const uint8_t *)a + o);
   (void)sink;
 }
 
-static volatile uint64_t *trap_ctx(void)
+/* the lines must end up in the TEST core's L1 (and the shared L2): touch them there */
+void xts_touch_range(const void *addr, uint32_t len)
 {
-  uint32_t sprg1;
-  asm volatile("mfsprg1 %0" : "=r"(sprg1));
-  return (volatile uint64_t *)(sprg1 | 0x80000000u);   /* libxenon maps real RAM at EA 0x80000000 */
+  if (xts_xc_mypir() == 0) touch_job((void *)addr, (void *)len);
+  else xts_core_xc_call(touch_job, (void *)addr, (void *)len);
 }
+
+/* PIR 0's HV context block (cached alias: libxenon maps real RAM at EA 0x80000000) */
+static volatile uint64_t *trap_ctx(void) { return (volatile uint64_t *)(xts_xc_test_ctx_real() | 0x80000000u); }
 
 static void patch_imm(uint8_t *dst, const char *label, uint32_t value)
 {
@@ -141,10 +155,42 @@ int xts_exec_runtime_intact(void)
   return rt_fpscr_before == rt_fpscr_after && rt_vscr_before == rt_vscr_after && rt_vrsave_before == rt_vrsave_after;
 }
 
+/* the timed part, on the test core (PIR 0) */
+typedef struct slot_job {
+  uint64_t ticks;
+  uint64_t srr0, srr1, dar;
+  uint32_t vector;
+} slot_job_t;
+static slot_job_t job;
+
+static void slot_job(void *a, void *b)
+{
+  slot_job_t *j = a;
+  volatile uint64_t *ctx = trap_ctx();
+  (void)b;
+  ctx[36] = 0;
+  ctx[37] = 0;
+  ctx[80] = 0;
+  ctx[81] = 0;
+  asm volatile("sync" ::: "memory");
+  rt_fpscr_before = rd_fpscr();
+  rt_vscr_before = rd_vscr();
+  rt_vrsave_before = rd_vrsave();
+  uint64_t t0 = xts_tb();
+  xts_slot_run(&in_img, &out_img);
+  j->ticks = xts_tb() - t0;
+  rt_fpscr_after = rd_fpscr();
+  rt_vscr_after = rd_vscr();
+  rt_vrsave_after = rd_vrsave();
+  j->vector = (uint32_t)ctx[80];
+  j->srr0 = ctx[36];
+  j->srr1 = ctx[37];
+  j->dar = ctx[81];
+}
+
 /* run whatever the slot currently holds with x->in / x->mem_in */
 static int run_prepared(xts_exec_t *x, uint64_t kernel_start, uint64_t kernel_bytes)
 {
-  volatile uint64_t *ctx = trap_ctx();
   in_img = x->in;
   xts_exec_resolve_code_ptrs(x, &in_img, kernel_start);
   in_img.outptr = (uint32_t)&out_img;
@@ -152,30 +198,20 @@ static int run_prepared(xts_exec_t *x, uint64_t kernel_start, uint64_t kernel_by
   memcpy(scratch, x->mem_in, XTS_SCRATCH_BYTES);
   memdcbf(&in_img, sizeof in_img);
   memdcbf(scratch, sizeof scratch);
-  ctx[36] = 0;
-  ctx[37] = 0;
-  ctx[80] = 0;
-  ctx[81] = 0;
   asm volatile("sync" ::: "memory");
   if (xts_exec_hooks_run_pre(x) < 0) return x->status;
-  rt_fpscr_before = rd_fpscr();
-  rt_vscr_before = rd_vscr();
-  rt_vrsave_before = rd_vrsave();
-  uint64_t t0 = xts_tb();
-  xts_slot_run(&in_img, &out_img);
-  x->ticks = xts_tb() - t0;
+  memset(&job, 0, sizeof job);
+  xts_core_xc_call(slot_job, &job, NULL);            /* returns only with XTS_XC_OK (a lost test core never returns) */
+  x->ticks = job.ticks;
   x->status = XTS_EXEC_OK;                           /* what the post hooks see */
   xts_exec_hooks_run_post(x);
-  rt_fpscr_after = rd_fpscr();
-  rt_vscr_after = rd_vscr();
-  rt_vrsave_after = rd_vrsave();
   memset(&x->trap, 0, sizeof x->trap);
-  x->trap.vector = (uint32_t)ctx[80];
+  x->trap.vector = job.vector;
   x->trap.trapped = x->trap.vector != 0;
   if (x->trap.trapped) {
-    x->trap.srr0 = ctx[36];
-    x->trap.srr1 = ctx[37];
-    x->trap.dar = ctx[81];
+    x->trap.srr0 = job.srr0;
+    x->trap.srr1 = job.srr1;
+    x->trap.dar = job.dar;
     x->trap.cause = x->trap.vector == 0x700 ? (uint32_t)((x->trap.srr1 >> 16) & 0xFF) : 0;
     uint32_t a = (uint32_t)x->trap.srr0;
     if (a >= (uint32_t)xts_slot_insn && a < (uint32_t)xts_slot_end) {
@@ -195,7 +231,6 @@ static int run_prepared(xts_exec_t *x, uint64_t kernel_start, uint64_t kernel_by
   x->out = out_img;
   memcpy(x->mem_out, scratch, XTS_SCRATCH_BYTES);
   x->status = XTS_EXEC_OK;
-  xts_watchdog_kick();                               /* every run (timing measurements are many runs): after the timed part */
   return XTS_EXEC_OK;
 }
 

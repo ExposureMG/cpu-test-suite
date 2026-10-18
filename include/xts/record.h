@@ -1,14 +1,15 @@
-/* XTS - result records: the one schema every sink writes (results.jsonl, results.csv, failures.jsonl, summary.json).
+/* XTS - result records: the one schema of every REC message (one results.jsonl line); the receiver (tools/xts_recv.py)
+ * derives results.csv, failures.jsonl and summary.json from it.
  *
  * Fields (results.jsonl, one JSON object per line):
- *   run_id   string   run directory name (uda0:/xts/<console_tag>/<run_id>/)
- *   seq      int      record number within the run (continues across resumes)
+ *   run_id   string   the run nonce, 16 hex digits (the receiver files the run under <out>/<console_tag>/<run_id>/)
+ *   seq      int      record number within the run
  *   family   string   test family name ("exec.ppc")
  *   case_id  string   family-defined, stable across runs ("addx.oe.rc#3")
  *   mnem     string   JSON mnemonic or "" (non-instruction cases)
  *   word     string   8 hex digits of the instruction word under test, or "" if none
  *   cond     object   the FULL condition vector: every registered axis -> value name (defaults for axes not applied)
- *   block    string   scheduler block key (journal key) the record was produced in
+ *   block    string   scheduler block key the record was produced in
  *   metric   string   what `value` is ("result", "latency", "rthroughput", "ticks", ...)
  *   value    number   or null
  *   unit     string   "cycles", "ticks", "bool", "" ...
@@ -72,7 +73,7 @@ typedef struct xts_record {
 void xts_record_init(xts_record_t *r);
 
 struct xts_ctx;
-/* Emit a record for the current case (fills run_id, seq, family, cond, block). Buffered; flushed at block end. */
+/* Emit a record for the current case (fills run_id, seq, family, cond, block). Sent as one REC message right away. */
 void xts_emit(struct xts_ctx *ctx, const xts_record_t *r);
 /* Shortcuts */
 void xts_emit_status(struct xts_ctx *ctx, int status, const char *detail);    /* metric "result" */

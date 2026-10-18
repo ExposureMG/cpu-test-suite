@@ -1,5 +1,5 @@
 /* src/smt + sibling/other_cores/speed axes on the host simulation: state machine, timeouts -> lost, park/wake, load
- * kernels decode back, same_insn word selection, exec hooks, watchdog timeout logic. */
+ * kernels decode back, same_insn word selection, exec hooks. */
 #include <string.h>
 #include <xts/xts.h>
 #include <smt/smt.h>
@@ -35,10 +35,10 @@ HTEST(smt_loads_start_stop)
   /* other cores */
   int mask = 0;
   HT_EQ_U64(xts_smt_cores_start(XTS_SMT_L2_PRESSURE, &mask), 0);
-  HT_EQ_U64(mask, xts_smt_reserved(4) ? 0x0C : 0x3C);
-  for (int p = 2; p < 6; p++) if (mask & (1 << p)) HT_EQ_U64(xts_smt_stop(p), 0);
+  HT_EQ_U64(mask, 0x28);                                 /* the spare threads of cores 1 and 2: PIR 3 and 5 */
+  for (int p = 1; p < 6; p++) if (mask & (1 << p)) HT_EQ_U64(xts_smt_stop(p), 0);
   HT_EQ_U64(xts_smt_cores_start(XTS_SMT_MEM_STREAM, &mask), 0);
-  for (int p = 2; p < 6; p++) if (mask & (1 << p)) HT_EQ_U64(xts_smt_stop(p), 0);
+  for (int p = 1; p < 6; p++) if (mask & (1 << p)) HT_EQ_U64(xts_smt_stop(p), 0);
   HT_CHECK(xts_dry_stats.kernels >= k0 + 8);
   HT_EQ_U64(xts_dry_stats.bad_words, bad0);              /* every load kernel decodes back */
   HT_CHECK(xts_smt_all_idle());
@@ -142,47 +142,12 @@ HTEST(smt_axes_hooks)
     HT_CHECK(xts_smt_all_idle());
     HT_EQ_U64(smtb_te1(), 1);
   }
-  /* speed: default and the current code apply; a change is refused unless built with XTS_SPEED_RISKY */
+  /* speed: read only - the single value "default" applies, nothing else; the code is never changed */
+  int code = xts_smt_speed_get();
   HT_EQ_U64(sp->apply(0), 0);
   sp->revert(0);
-  HT_EQ_U64(sp->apply(xts_smt_speed_get()), 0);
-  sp->revert(xts_smt_speed_get());
-#ifndef XTS_SPEED_RISKY
-  HT_CHECK(sp->apply(3) < 0);
-#endif
-  HT_EQ_U64(xts_smt_speed_get(), 1);
-  /* a speed change is refused while the sibling runs */
-  char why[96];
-  HT_EQ_U64(xts_smt_start(1, XTS_SMT_BUSY_INT, NULL, 0), 0);
-  HT_CHECK(xts_smt_speed_set(2, why, sizeof why) < 0);
-  HT_EQ_U64(xts_smt_stop(1), 0);
-  HT_EQ_U64(xts_smt_speed_set(2, why, sizeof why), 0);
-  HT_EQ_U64(xts_smt_speed_get(), 2);
-  xts_smt_test_reset();
-}
-
-HTEST(smt_watchdog_logic)
-{
-  xts_smt_test_reset();
-  HT_EQ_U64(xts_smt_wd_start(60), 0);
-  HT_CHECK(xts_smt_wd_running());
-  HT_EQ_U64(xts_smt_state(4), XTS_SMT_ST_RUNNING);
-  HT_CHECK(xts_smt_reserved(4) == xts_smt_reserved(5));
-  xts_smt_wd_kick();
-  HT_CHECK(!xts_smt_wd_fired());
-  HT_CHECK(xts_smt_all_idle());                            /* the watchdog does not count as "in use" */
-  uint64_t t0 = xts_tb();
-  while (!xts_smt_wd_fired() && xts_tb() - t0 < xts_tb_hz() / 2) xts_delay_ms(5);
-  HT_CHECK(xts_smt_wd_fired());
-  xts_smt_wd_stop();
-  HT_CHECK(!xts_smt_wd_running());
-  HT_EQ_U64(xts_smt_state(4), XTS_SMT_ST_IDLE);
-  /* kicked often enough: no fire */
-  HT_EQ_U64(xts_smt_wd_start(200), 0);
-  t0 = xts_tb();
-  while (xts_tb() - t0 < xts_tb_hz() / 4) { xts_smt_wd_kick(); xts_delay_ms(5); }
-  HT_CHECK(!xts_smt_wd_fired());
-  xts_smt_wd_stop();
+  HT_CHECK(sp->apply(1) < 0);
+  HT_EQ_U64(xts_smt_speed_get(), code);
   xts_smt_test_reset();
 }
 

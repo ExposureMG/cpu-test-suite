@@ -1,7 +1,7 @@
 /* XTS - profiles. One ELF per profile: `make PROFILE=<name>` links profiles/<name>.c, which defines `xts_profile`.
  *
  *   #include <xts/profile.h>
- *   XTS_PROFILE(smoke, "USB + identity + self-test + exec.ppc subset",
+ *   XTS_PROFILE(smoke, "identity + self-test + exec.ppc subset",
  *     { .families = "self.*" },
  *     { .families = "exec.ppc", .axes = "sf=*" },
  *   );

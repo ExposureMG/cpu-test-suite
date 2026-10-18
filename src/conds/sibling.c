@@ -1,4 +1,5 @@
-/* sibling - what the other hardware thread of core 0 (PIR 1) does while a block runs.
+/* sibling - what the other hardware thread of the test core (core 0: PIR 1) does while a block runs. The test executor
+ * is PIR 0 (xts/xcore.h); this code runs on the suite core, and CTRL[TE1] is read/written on core 0 (src/smt).
  *
  *   idle       libxenon's wait loop (`or 1,1,1` + polling its slot): the boot state, verified (slot free, CTRL[TE1] = 1)
  *   parked     xenon_sleep_thread(1), verified by CTRL[TE1] = 0 (single-thread mode for core 0); woken at revert

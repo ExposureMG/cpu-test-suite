@@ -9,6 +9,7 @@
  *   xts/timing.h   measurement engine                                  xts/profile.h  profiles
  *   xts/rline.h    results.jsonl line reader (finish hooks)
  *   xts/plat.h     platform layer (console / host)                     xts/kgen.h     constants (xk_li64), cond queries
+ *   xts/net.h      result transport over UDP (framework)              xts/xcore.h    core roles, cross-core execution
  *   xts/cond_util.h  helpers for the condition axes (explicit include; not part of xts.h)
  * Framework-private headers (framework code only, via -Isrc): <core/core.h>, <exec/exec_priv.h>, <model/model_priv.h>,
  * <plat/plat_libxenon.h>.
@@ -53,7 +54,7 @@ static inline uint64_t xts_hash_str(uint64_t h, const char *s)
 }
 static inline uint64_t xts_hash_u64(uint64_t h, uint64_t v) { return xts_mix64(h ^ xts_mix64(v)); }
 
-/* ---- logging: run.log (buffered with the block) + screen status -------------------------------------------------------- */
+/* ---- logging: run.log (one LOG message per line) + screen status -------------------------------------------------------- */
 void xts_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void xts_status(const char *fmt, ...) __attribute__((format(printf, 1, 2)));   /* screen status line only */
 

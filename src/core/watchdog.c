@@ -1,6 +1,6 @@
-/* Watchdog hook. These are WEAK defaults (no watchdog); src/smt/ provides the real implementation (heartbeat thread on
- * core 2 calling xenon_smc_power_reboot() after a timeout, opt-in WATCHDOG=1) by defining the same functions
- * (xts_watchdog_set_timeout: the per-block timeout from the family kind, see src/core/main.c). */
+/* Watchdog hooks: weak no-ops. The SMC-reboot watchdog is gone (there is no resume to reboot into); a hang of the test
+ * core is detected by the suite core's xts_xc_call timeout and reported (HANG + END, src/core/main.c). The hooks stay so
+ * existing callers (calib, the exec layer) need no change; a platform may still override them. */
 #include <xts/plat.h>
 
 __attribute__((weak)) void xts_watchdog_start(uint32_t timeout_ms) { (void)timeout_ms; }

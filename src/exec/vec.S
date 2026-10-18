@@ -9,8 +9,9 @@
  *
  *   in range:  ctx[36] = SRR0, ctx[37] = SRR1, ctx[80] = vector, ctx[81] = DAR; resume at SRR0+4
  *   otherwise: restore r3/r4/CR and continue exactly like DO_EXCEPT (std r1..r4, li r3,vector, b ex_<handler>)
- *              -> libxenon dumps state -> crashdump (below) -> xts_crash_entry (C): crash.json via the disc guard's
- *                 raw API (never libfat), or nothing if storage was busy.
+ *              -> libxenon dumps state -> crashdump (below): this PIR's uncached crash slot (xts/xcore.h) is filled,
+ *                 `valid` last, then xts_crash_entry (C) draws one screen line and the thread spins. The suite core
+ *                 sees the slot (xts_xc_call -> XTS_XC_CRASHED for PIR 0) and reports it over the network.
  *
  * Interrupts run with MSR[SF]=1, translation off; only SPRs, GPRs and the context block (real address) are touched.
  * SRR0 is compared on its low 32 bits (cmplw), which is what a case address is in either mode.
@@ -105,14 +106,20 @@ xts_vec_stub_end:
  * libxenon's own (display-based) version out of the link. Before any C:
  *   - clear MSR[SF] (this binary's C code is 32-bit);
  *   - count the entry in xts_crash_depth[pir]: 0 -> normal crash handling, 1 -> nested crash (the handler itself
- *     faulted: xts_crash_entry only draws a minimal screen line), >= 2 -> spin here without touching anything;
+ *     faulted: xts_crash_entry only spins), >= 2 -> spin here without touching anything;
+ *   - first entry only: fill this PIR's crash slot (uncached, address in xts_xc_crash_ea[pir], 0 = not armed: skipped;
+ *     a slot already valid is kept: the first crash wins) from libxenon's context block - vector, PIR, SRR0/SRR1/DAR,
+ *     DSISR, LR/CTR/CR/XER, r0-r31, timebase - then sync, valid = 1, sync. No C, no stack, no locks: the slot is the
+ *     only shared state written (layout: src/plat/xcore_console.h, checked against xts_xc_crash_t at compile time);
  *   - r1 = top of this PIR's emergency stack (xts_crash_stacks[pir], 16 KB = 1 << 14, src/plat/plat_console.c) - 64,
  *     back chain 0;
  *   - r2 / r13 = the values main() ran with (captured by xts_plat_init: libxenon's crt sets neither and this build uses
  *     no small-data base registers, so they are only restored for safety);
  *   - DSISR is read first (r10 -> r6): libxenon's fault path does not save it, and nothing before crashdump changes it.
  * Then xts_crash_entry(r3 = vector, r4 = context, r5 = depth before this entry, r6 = DSISR). PIR > 5 cannot happen;
- * clamped to 5. */
+ * clamped to 5. Context block (libxenon except.S): r0-r31 at 8*n, LR 8*32, CTR 8*33, CR 8*34, XER 8*35, SRR0 8*36,
+ * SRR1 8*37, DAR 8*38, PIR 8*39. */
+#include "../plat/xcore_console.h"
 	.globl crashdump
 	.align 4
 crashdump:
@@ -121,6 +128,7 @@ crashdump:
 	rldicl 5, 5, 0, 1
 	mtmsrd 5
 	isync
+	clrldi 4, 4, 32         /* context EA (32-bit) */
 	mfspr 5, 1023
 	clrldi 5, 5, 61
 	cmplwi 5, 5
@@ -135,7 +143,48 @@ crashdump:
 	sync
 	cmplwi 8, 2
 	bge 2f
-	lis 6, xts_crash_stacks@ha
+	cmplwi 8, 0
+	bne 4f                  /* nested: the slot already holds the first crash */
+	lis 6, xts_xc_crash_ea@ha
+	addi 6, 6, xts_xc_crash_ea@l
+	lwzx 6, 6, 7            /* r6 = this PIR's slot (uncached EA) or 0 */
+	cmplwi 6, 0
+	beq 4f
+	lwz 7, XC_CRASH_VALID(6)
+	cmplwi 7, 0
+	bne 4f
+	stw 5, XC_CRASH_PIR(6)
+	stw 3, XC_CRASH_VECTOR(6)
+	ld 7, 8*36(4)
+	std 7, XC_CRASH_SRR0(6)
+	ld 7, 8*37(4)
+	std 7, XC_CRASH_SRR1(6)
+	ld 7, 8*38(4)
+	std 7, XC_CRASH_DAR(6)
+	clrldi 7, 10, 32
+	std 7, XC_CRASH_DSISR(6)
+	ld 7, 8*32(4)
+	std 7, XC_CRASH_LR(6)
+	ld 7, 8*33(4)
+	std 7, XC_CRASH_CTR(6)
+	ld 7, 8*34(4)
+	std 7, XC_CRASH_CR(6)
+	ld 7, 8*35(4)
+	std 7, XC_CRASH_XER(6)
+	li 7, 32
+	mtctr 7
+	addi 9, 4, -8
+	addi 11, 6, XC_CRASH_GPR-8
+3:	ldu 7, 8(9)
+	stdu 7, 8(11)
+	bdnz 3b
+	mftb 7
+	std 7, XC_CRASH_TB(6)
+	sync
+	li 7, 1
+	stw 7, XC_CRASH_VALID(6)
+	sync
+4:	lis 6, xts_crash_stacks@ha
 	addi 6, 6, xts_crash_stacks@l
 	addi 7, 5, 1
 	slwi 7, 7, 14
@@ -151,4 +200,5 @@ crashdump:
 	mr 5, 8
 	clrldi 6, 10, 32
 	b xts_crash_entry
-2:	b 2b
+2:	or 1, 1, 1              /* low priority: leave the core to the sibling */
+	b 2b

@@ -1,5 +1,5 @@
 /* xts/rline.h: the results.jsonl line reader used by family finish hooks. Lines come from the real sink (emit through the
- * host sink, read back with xts_results_foreach) and from hand-written lines for the shapes the sink does not produce
+ * sink into the in-RAM results store, read back with xts_results_foreach) and from hand-written lines for the shapes the sink does not produce
  * (shuffled keys, \u escapes, malformed input). */
 #include <math.h>
 #include <stdio.h>
@@ -31,13 +31,9 @@ static void set_axis(xts_condvec_t *cv, const char *axis, const char *value)
 
 HTEST(rline_sink_roundtrip)
 {
-  char dir[600], cmd[700];
-  snprintf(dir, sizeof dir, "%s/rline_sink", ht_tmp);
-  snprintf(cmd, sizeof cmd, "rm -rf '%s'", dir);
-  HT_EQ_U64(system(cmd), 0);
-  HT_EQ_U64(xts_mkdirs(dir), 0);
   xts_sink_discard();
-  HT_EQ_U64(xts_sink_open(dir, "rl", 0), 0);
+  HT_EQ_U64(xts_results_foreach("rline_t", keep_cb, NULL), (uint64_t)-1);   /* no run: no results store */
+  HT_EQ_U64(xts_sink_open("rl", "host"), 0);           /* a run without HELLO: records reach the in-RAM store only */
   static const xts_family_t fam = { .name = "rline_t", .kind = "timing" };
   xts_case_t c = { .id = "dist.int>lwz#4", .insn = -1 };
   xts_condvec_t cv, cv2;

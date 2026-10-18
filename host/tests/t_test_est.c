@@ -64,23 +64,19 @@ HTEST(test_est_enumerate)
 static const xts_profile_row_t rows[] = { { .families = "exec.est" } };
 static const xts_profile_t prof = { "testest", "exec.est host run", rows, 1 };
 
+static int est_child(void *ud)
+{
+  (void)ud;
+  return xts_run(&prof, NULL) == 0 ? 0 : 1;
+}
+
 HTEST(test_est_host_run)
 {
-  char root[512], path[700], cmd[600];
-  snprintf(root, sizeof root, "%s/est", ht_tmp);
-  snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
-  HT_EQ_U64(system(cmd), 0);
-  pid_t pid = fork();
-  if (pid == 0) {
-    char *argv[] = { "x", "--root", root, "--quiet", NULL };
-    xts_plat_init(4, argv);
-    _exit(xts_run(&prof, NULL) == 0 ? 0 : 1);
-  }
-  int st = 0;
-  waitpid(pid, &st, 0);
-  HT_CHECK(WIFEXITED(st) && WEXITSTATUS(st) == 0);
-  snprintf(path, sizeof path, "%s/xts/host/0001/results.jsonl", root);
-  const char *js = ht_slurp(path);
+  char rd[700];
+  int rrc = -1;
+  HT_EQ_U64(ht_recv_run("est", est_child, NULL, NULL, rd, sizeof rd, &rrc), 0);
+  HT_EQ_U64(rrc, 0);                                   /* > 15000 records over localhost UDP without a loss */
+  const char *js = ht_run_file(rd, "results.jsonl");
   HT_CHECK(js != NULL);
   if (!js) return;
   HT_EQ_U64(ht_count_substr(js, "\"metric\":\"tininess\""), 4);
@@ -93,7 +89,6 @@ HTEST(test_est_host_run)
   HT_CHECK(strstr(js, "\"status\":\"fail\"") == NULL);
   HT_CHECK(strstr(js, "\"status\":\"trap\"") == NULL);
   HT_CHECK(strstr(js, "\"truncated\"") == NULL);
-  snprintf(path, sizeof path, "%s/xts/host/0001/failures.jsonl", root);
-  const char *fl = ht_slurp(path);
+  const char *fl = ht_run_file(rd, "failures.jsonl");
   HT_CHECK(fl == NULL || fl[0] == 0);
 }

@@ -1,5 +1,5 @@
-/* framework v2 runs (forked boots of the real xts_run): family finish() ordering and resume semantics, a PIR != 0 crash
- * reported on the next boot, max_cases sampling, leaked exec hooks removed after a block. */
+/* framework v2 runs (the real xts_run in a forked child, results through tools/xts_recv.py): family finish() ordering and
+ * its view of quarantined blocks, max_cases sampling, leaked exec hooks removed after a block. */
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -9,7 +9,7 @@
 #include "htest.h"
 
 /* ---- t.fin: 6 cases, 2 per block, axis sf=* -> 6 blocks per row, finish after them ---- */
-static int fin_die_at = -1, fin_thread_crash, fin_leak_hook;
+static int fin_leak_hook;
 static int fin_runs_this_boot;
 static int fin_enum(xts_caselist_t *cl)
 {
@@ -19,13 +19,6 @@ static int fin_enum(xts_caselist_t *cl)
 static int leak_pre(xts_exec_t *x, void *ud) { (void)x; (void)ud; return 0; }
 static int fin_run(const xts_case_t *c, xts_ctx_t *ctx)
 {
-  if (fin_thread_crash && ctx->case_index == fin_die_at - 1 && xts_cond_value(ctx, "sf") == 1) {
-    uint64_t fake[40] = { 0 };
-    fake[36] = 0x80007777;
-    fake[39] = 3;                                /* PIR 3 crashes while the main thread runs this case; main goes on */
-    HT_EQ_U64(xts_crash_handle(0x700, fake, 0), XTS_CRASH_THREAD);
-  }
-  if (ctx->case_index == fin_die_at && xts_cond_value(ctx, "sf") == 1) _exit(9);   /* the next case hangs */
   if (fin_leak_hook && ctx->case_index == 0) xts_exec_hook_add(leak_pre, NULL, NULL);   /* never removed */
   fin_runs_this_boot++;
   xts_emit_value(ctx, "count", ctx->case_index, "count", XTS_ST_PASS);
@@ -80,20 +73,22 @@ static const xts_profile_row_t cap_rows[] = { { .families = "t.cap", .max_cases 
                                               { .families = "t.cap", .max_cases = 200 } };
 static const xts_profile_t cap_prof = { "tcap", "max_cases test", cap_rows, 3 };
 
-static int boot(const xts_profile_t *prof, const char *root, int die, int thread_crash, int leak)
+typedef struct { const xts_profile_t *prof; int leak, quar; } fcfg_t;
+static const xts_quar_t fin_quar[] = { { "t.fin", "f3" } };
+static int fin_child(void *ud)
 {
-  pid_t pid = fork();
-  if (pid == 0) {
-    char *argv[] = { "x", "--root", (char *)root, "--quiet", NULL };
-    xts_plat_init(4, argv);
-    fin_die_at = die;
-    fin_thread_crash = thread_crash;
-    fin_leak_hook = leak;
-    _exit(xts_run(prof, NULL) == 0 ? 0 : 1);
-  }
-  int st = 0;
-  waitpid(pid, &st, 0);
-  return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+  const fcfg_t *c = ud;
+  fin_leak_hook = c->leak;
+  if (c->quar) xts_quarantine_set(fin_quar, 1);
+  return xts_run(c->prof, NULL) == 0 ? 0 : 1;
+}
+static int boot(const char *name, const xts_profile_t *prof, int leak, int quar, char *rd, size_t cap)
+{
+  fcfg_t c = { prof, leak, quar };
+  int rrc = -1;
+  int r = ht_recv_run(name, fin_child, &c, NULL, rd, cap, &rrc);
+  HT_EQ_U64(rrc, 0);
+  return r;
 }
 
 static int pos_of(const char *hay, const char *needle) { const char *p = strstr(hay, needle); return p ? (int)(p - hay) : -1; }
@@ -106,13 +101,9 @@ static int last_pos_of(const char *hay, const char *needle)
 
 HTEST(fw2_finish_order)
 {
-  char root[512], cmd[600], path[700];
-  snprintf(root, sizeof root, "%s/fin1", ht_tmp);
-  snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
-  HT_EQ_U64(system(cmd), 0);
-  HT_EQ_U64(boot(&fin_prof, root, -1, 0, 1), 0);
-  snprintf(path, sizeof path, "%s/xts/host/0001/results.jsonl", root);
-  const char *js = ht_slurp(path);
+  char rd[700];
+  HT_EQ_U64(boot("fin1", &fin_prof, 1, 0, rd, sizeof rd), 0);
+  const char *js = ht_run_file(rd, "results.jsonl");
   HT_CHECK(js != NULL);
   if (!js) return;
   char *copy = strdup(js);
@@ -128,44 +119,26 @@ HTEST(fw2_finish_order)
                         "\"runs_mem\":6,\"on_disk\":19,\"hooks\":0}") != NULL);   /* 18 case records + row 0's summary */
   HT_CHECK(strstr(copy, "\"case_id\":\"summary\",\"mnem\":\"\",\"word\":\"\",\"cond\":{") != NULL);
   free(copy);
-  snprintf(path, sizeof path, "%s/xts/host/0001/journal.txt", root);
-  const char *jl = ht_slurp(path);
-  HT_CHECK(jl && ht_count_substr(jl, "BEGIN r0:t.fin:finish") == 1 && ht_count_substr(jl, "END r0:t.fin:finish") == 1);
   /* the leaked hook was removed after its block, and logged */
-  snprintf(path, sizeof path, "%s/xts/host/0001/run.log", root);
-  const char *lg = ht_slurp(path);
+  const char *lg = ht_run_file(rd, "run.log");
   HT_CHECK(lg && strstr(lg, "exec hook(s) still registered after the axes were reverted: removed") != NULL);
 }
 
-HTEST(fw2_finish_resume)
+/* one case quarantined (quarantine.txt): its blocks report it to finish() (quar, not complete); skip records */
+HTEST(fw2_finish_quarantine)
 {
-  char root[512], cmd[600], path[700];
-  snprintf(root, sizeof root, "%s/fin2", ht_tmp);
-  snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
-  HT_EQ_U64(system(cmd), 0);
-  /* boot 1 dies in case 3 of the sf=32 combination (block r0:...:sf=32:c1); PIR 3 crashed during case 2, and PIR 0
-   * wrote that into crash.json (kind "thread") at the case boundary before case 3 */
-  HT_EQ_U64(boot(&fin_prof, root, 3, 1, 0), 9);
-  HT_EQ_U64(boot(&fin_prof, root, -1, 0, 0), 0);
-  snprintf(path, sizeof path, "%s/xts/host/0001/results.jsonl", root);
-  const char *js = ht_slurp(path);
+  char rd[700];
+  HT_EQ_U64(boot("fin2", &fin_prof, 0, 1, rd, sizeof rd), 0);
+  const char *js = ht_run_file(rd, "results.jsonl");
   HT_CHECK(js != NULL);
   if (!js) return;
   char *copy = strdup(js);
   HT_EQ_U64(ht_count_substr(copy, "\"case_id\":\"summary\""), 2);
-  /* row 0 finish after the resume: 4 blocks done in boot 1, the hung one re-run in boot 2 without its case 3
-   * (quarantined), the last one run in boot 2 */
-  HT_CHECK(strstr(copy, "\"detail\":{\"row\":0,\"blocks\":6,\"ran\":2,\"earlier\":4,\"quar\":1,\"skipped\":0,\"complete\":0,") != NULL);
-  HT_CHECK(strstr(copy, "\"status\":\"hang\"") != NULL);
-  /* the PIR 3 crash from boot 1 is a crash record of the block the main thread was in (from crash.json) */
-  HT_CHECK(strstr(copy, "\"case_id\":\"pir3\"") != NULL);
-  int p = pos_of(copy, "\"case_id\":\"pir3\"");
-  HT_CHECK(p >= 0 && strstr(copy + p, "\"block\":\"r0:t.fin:sf=32:c1\"") != NULL && strstr(copy + p, "\"status\":\"crash\"") != NULL);
-  HT_CHECK(strstr(copy, "\"thr3_srr0\":\"0000000080007777\"") != NULL && strstr(copy, "\"kind\":\"thread\"") != NULL);
+  HT_CHECK(strstr(copy, "\"detail\":{\"row\":0,\"blocks\":6,\"ran\":6,\"earlier\":0,\"quar\":2,\"skipped\":0,\"complete\":0,"
+                        "\"runs_mem\":10,\"on_disk\":10,") != NULL);
+  HT_CHECK(strstr(copy, "\"detail\":{\"row\":1,\"blocks\":3,\"ran\":3,\"earlier\":0,\"quar\":1,\"skipped\":0,\"complete\":0,") != NULL);
+  HT_EQ_U64(ht_count_substr(copy, "quarantined (quarantine.txt)"), 3);
   free(copy);
-  snprintf(path, sizeof path, "%s/xts/host/0001/journal.txt", root);
-  const char *jl = ht_slurp(path);
-  HT_CHECK(jl && ht_count_substr(jl, "BEGIN r0:t.fin:finish") == 1 && strstr(jl, "QUAR r0:t.fin:sf=32:c1 case=1 status=hang"));
 }
 
 HTEST(fw2_max_cases)
@@ -190,13 +163,9 @@ HTEST(fw2_max_cases)
   HT_EQ_U64(xts_block_rel(&p.b[1], 75), (uint64_t)-1);
   HT_EQ_U64(xts_block_rel(&p.b[1], 80), (uint64_t)-1);
   HT_CHECK(!strcmp(p.b[0].key, "r0:t.cap:-:c0") && !strcmp(p.b[2].key, "r0:t.cap:-:c2"));
-  char root[512], cmd[600], path[700];
-  snprintf(root, sizeof root, "%s/cap", ht_tmp);
-  snprintf(cmd, sizeof cmd, "rm -rf '%s'", root);
-  HT_EQ_U64(system(cmd), 0);
-  HT_EQ_U64(boot(&cap_prof, root, -1, 0, 0), 0);
-  snprintf(path, sizeof path, "%s/xts/host/0001/results.jsonl", root);
-  const char *js = ht_slurp(path);
+  char rd[700];
+  HT_EQ_U64(boot("cap", &cap_prof, 0, 0, rd, sizeof rd), 0);
+  const char *js = ht_run_file(rd, "results.jsonl");
   HT_CHECK(js != NULL);
   if (!js) return;
   HT_EQ_U64(ht_count_substr(js, "\"family\":\"t.cap\""), 117);

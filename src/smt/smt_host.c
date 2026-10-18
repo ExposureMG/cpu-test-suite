@@ -1,4 +1,4 @@
-/* src/smt host backend: a simulation of libxenon's thread slots, CTRL[TE1] and the speed code, driven from smt.c's bounded
+/* src/smt host backend: a simulation of libxenon's thread slots, CTRL[TE1] and the (read-only) speed code, driven from smt.c's bounded
  * wait loops (smtb_relax). Load kernels are built exactly as on the console and every word is decoded back (counted in the
  * dry-run statistics; a bad word makes host-dryrun fail). Nothing executes. */
 #include <stdio.h>
@@ -17,7 +17,6 @@ int xts_smt_sim_cores_fail;
 
 const char *smtb_name(void) { return "host-sim"; }
 uint32_t smtb_addr(const void *p) { return (uint32_t)(uintptr_t)p; }
-uint32_t smtb_tb10(void) { return (uint32_t)(xts_tb() >> 10); }
 int smtb_thread_alive(int pir) { return (alive >> pir) & 1; }
 int smtb_slot_busy(int pir) { return busy[pir]; }
 
@@ -37,16 +36,12 @@ void smtb_relax(int pir)
   if (!launched[pir]) return;
   if (t->started != t->gen) { t->started = t->gen; return; }
   if (t->stop) {
+    t->exit_why = TCB_EXIT_OK;
     t->done = t->gen;
     launched[pir] = busy[pir] = 0;
     return;
   }
   t->iters++;
-  if (t->load == XTS_SMT_WATCHDOG) {
-    uint32_t now = smtb_tb10();
-    xts_smt_wd.last_check = now;
-    if (xts_smt_wd.timeout && (uint32_t)(now - xts_smt_wd.kick) > xts_smt_wd.timeout) xts_smt_wd.fired = 1;
-  }
 }
 
 int smtb_launch(int pir)
@@ -100,13 +95,6 @@ void smtb_code_range(int pir, uint64_t *lo, uint64_t *hi)
 }
 
 int smtb_speed_get(void) { return speed; }
-int smtb_speed_set(int c, char *why, int why_size)
-{
-  if (c < 1 || c > 4) { snprintf(why, why_size, "bad speed code %d", c); return -1; }
-  alive = 0x3f;
-  speed = c;
-  return 0;
-}
 
 void *smtb_alloc(uint32_t bytes) { return aligned_alloc(65536, (bytes + 65535u) & ~65535u); }
 

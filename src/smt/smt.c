@@ -1,5 +1,5 @@
-/* src/smt common part (console and host): thread state machine with timeouts, JIT load kernels, the SMT exec hooks,
- * per-block info records, the speed-change precondition and the watchdog logic. Hardware access goes through the backend
+/* src/smt common part (console and host): thread state machine with timeouts, JIT load kernels, the SMT exec hooks and
+ * per-block info records. Hardware access goes through the backend
  * (smt_console.c: libxenon; smt_host.c: a simulation so the host dry run walks the same code).
  *
  * Memory safety of the load kernels: they run on other hardware threads, outside the exec engine, so the memory guard
@@ -18,11 +18,11 @@
 #include <xts/kernel.h>
 #include <xts/exec.h>
 #include <xts/json.h>
+#include <xts/xcore.h>
 #include "smt_int.h"
 
 xts_smt_tcb_t xts_smt_tcbs[XTS_SMT_NPIR];
 uint32_t xts_smt_tcbp[XTS_SMT_NPIR];
-xts_smt_wd_t xts_smt_wd;
 xts_smt_runstats_t xts_smt_rs;
 int xts_smt_hook_sibling_mode;
 int xts_smt_hook_cores;
@@ -44,7 +44,7 @@ int xts_smt_hook_cores;
 #define CORE_BUF      (4u * STREAM_SLICE)
 
 static const char *const load_names[XTS_SMT_NLOADS] = {
-  "none", "busy_int", "busy_fp", "busy_vmx", "busy_mem", "same_insn", "busy_ld", "l2_pressure", "mem_stream", "watchdog"
+  "none", "busy_int", "busy_fp", "busy_vmx", "busy_mem", "same_insn", "busy_ld", "l2_pressure", "mem_stream"
 };
 const char *xts_smt_load_name(int l) { return l >= 0 && l < XTS_SMT_NLOADS ? load_names[l] : "?"; }
 static const char *const st_names[] = { "idle", "running", "parked", "lost" };
@@ -63,6 +63,7 @@ const char *xts_smt_err_name(int e)
   case XTS_SMT_E_CORES: return "threads 2-5 not up";
   case XTS_SMT_E_BUILD: return "kernel build/alloc failed";
   case XTS_SMT_E_STATE: return "wrong thread state";
+  case XTS_SMT_E_EXIT: return "kernel exit self-check failed (inconsistent TCB)";
   }
   return "?";
 }
@@ -80,11 +81,8 @@ static uint64_t park_tscr;
 static xts_kbuf_t *kb;
 static uint8_t *sib_mem, *core_mem;      /* lazily allocated load buffers (never the tests' big buffer) */
 static uint8_t l1bufs[XTS_SMT_NPIR][4096] __attribute__((aligned(128)));
-static int wd_running;
-static uint32_t wd_timeout_ms;
 
 static uint64_t ms_ticks(uint32_t ms) { return (uint64_t)ms * xts_tb_hz() / 1000u; }
-static uint32_t tb10(void) { return smtb_tb10(); }
 
 int xts_smt_init(void)
 {
@@ -101,15 +99,8 @@ int xts_smt_init(void)
   return 0;
 }
 
-int xts_smt_reserved(int pir)
-{
-#ifdef XTS_WATCHDOG
-  return pir == 4 || pir == 5;   /* core 2: watchdog on PIR 4, its sibling left alone so the watchdog keeps its core */
-#else
-  (void)pir;
-  return 0;
-#endif
-}
+/* the role threads (xts/xcore.h): test executor, suite, transmitter */
+int xts_smt_reserved(int pir) { return pir == XTS_PIR_TEST || pir == XTS_PIR_SUITE || pir == XTS_PIR_NET; }
 
 int xts_smt_state(int pir) { return pir >= 1 && pir < XTS_SMT_NPIR ? th[pir].st : XTS_SMT_ST_LOST; }
 uint32_t xts_smt_iters(int pir) { return pir >= 1 && pir < XTS_SMT_NPIR ? xts_smt_tcbs[pir].iters : 0; }
@@ -117,10 +108,8 @@ uint32_t xts_smt_ops_per_iter(int pir) { return pir >= 1 && pir < XTS_SMT_NPIR ?
 
 int xts_smt_all_idle(void)
 {
-  for (int p = 1; p < XTS_SMT_NPIR; p++) {
-    if (th[p].st == XTS_SMT_ST_RUNNING && th[p].load == XTS_SMT_WATCHDOG) continue;
-    if (th[p].st != XTS_SMT_ST_IDLE) return 0;
-  }
+  for (int p = 1; p < XTS_SMT_NPIR; p++)
+    if (!xts_smt_reserved(p) && th[p].st != XTS_SMT_ST_IDLE) return 0;
   return 1;
 }
 
@@ -369,8 +358,7 @@ static int check_load_ranges(int pir, int load, const uint32_t *words, int nword
 static int start_ex(int pir, int load, const uint32_t *words, int nwords, int slice, int nslices)
 {
   xts_smt_init();
-  if (pir < 1 || pir >= XTS_SMT_NPIR) return XTS_SMT_E_PIR;
-  if (load != XTS_SMT_WATCHDOG && xts_smt_reserved(pir)) return XTS_SMT_E_PIR;
+  if (pir < 1 || pir >= XTS_SMT_NPIR || xts_smt_reserved(pir)) return XTS_SMT_E_PIR;
   if (th[pir].st == XTS_SMT_ST_LOST) return XTS_SMT_E_LOST;
   if (th[pir].st != XTS_SMT_ST_IDLE) return XTS_SMT_E_STATE;
   if (pir >= 2 && xts_smt_cores_up() < 0) return XTS_SMT_E_CORES;
@@ -379,11 +367,9 @@ static int start_ex(int pir, int load, const uint32_t *words, int nwords, int sl
   xts_smt_tcb_t *t = &xts_smt_tcbs[pir];
   uint32_t ops = 0;
   t->code = 0;
-  if (load != XTS_SMT_WATCHDOG) {
-    if (prep_buffers(pir, load, slice, nslices) < 0) return XTS_SMT_E_BUILD;
-    if (!check_load_ranges(pir, load, words, nwords, nslices)) return XTS_SMT_E_BUILD;
-    if (build_kernel(pir, load, words, nwords, &ops) < 0) return XTS_SMT_E_BUILD;
-  }
+  if (prep_buffers(pir, load, slice, nslices) < 0) return XTS_SMT_E_BUILD;
+  if (!check_load_ranges(pir, load, words, nwords, nslices)) return XTS_SMT_E_BUILD;
+  if (build_kernel(pir, load, words, nwords, &ops) < 0) return XTS_SMT_E_BUILD;
   t->stop = 0;
   t->started = 0;
   t->done = 0;
@@ -428,11 +414,19 @@ int xts_smt_stop(int pir)
   smt_sync();
   if (!wait_for(c_done_free, pir, th[pir].gen, TO_STOP)) {
     th[pir].st = XTS_SMT_ST_LOST;
-    xts_log("smt: PIR %d (%s) did not stop (done=%u gen=%u slot %s): thread marked lost", pir,
-            xts_smt_load_name(th[pir].load), (unsigned)t->done, (unsigned)th[pir].gen, smtb_slot_busy(pir) ? "busy" : "free");
-    return XTS_SMT_E_STOP_TO;
+    int bad = t->exit_why == TCB_EXIT_BAD;
+    xts_log("smt: PIR %d (%s) did not stop (done=%u gen=%u slot %s%s): thread marked lost", pir,
+            xts_smt_load_name(th[pir].load), (unsigned)t->done, (unsigned)th[pir].gen, smtb_slot_busy(pir) ? "busy" : "free",
+            bad ? ", kernel exit self-check FAILED: TCB inconsistent" : "");
+    return bad ? XTS_SMT_E_EXIT : XTS_SMT_E_STOP_TO;
   }
   th[pir].st = XTS_SMT_ST_IDLE;
+  if (t->exit_why == TCB_EXIT_BAD) {
+    th[pir].st = XTS_SMT_ST_LOST;
+    xts_log("smt: PIR %d (%s): kernel exit self-check failed (TCB inconsistent): thread marked lost", pir,
+            xts_smt_load_name(th[pir].load));
+    return XTS_SMT_E_EXIT;
+  }
   if (t->trap_vector)
     xts_log("smt: PIR %d (%s) took interrupt %X at %08X inside its kernel", pir, xts_smt_load_name(th[pir].load),
             (unsigned)t->trap_vector, (unsigned)t->trap_srr0);
@@ -480,6 +474,14 @@ int xts_smt_wake(void)
 }
 
 /* other-core loads: every usable PIR of 2-5, slices of the shared core buffer */
+int xts_smt_exit_check(int pir)
+{
+  if (pir < 1 || pir >= XTS_SMT_NPIR) return XTS_SMT_E_PIR;
+  uint32_t w = xts_smt_tcbs[pir].exit_why;
+  return w == TCB_EXIT_OK ? 1 : w == TCB_EXIT_BAD ? XTS_SMT_E_EXIT : 0;
+}
+
+/* other-core loads: the spare threads of cores 1 and 2 (PIR 3, 5), slices of the shared core buffer */
 int xts_smt_cores_start(int load, int *pirs_out)
 {
   int pirs[4], n = 0;
@@ -558,7 +560,7 @@ static uint32_t cores_iters(void)
 {
   uint32_t s = 0;
   for (int p = 2; p < XTS_SMT_NPIR; p++)
-    if (th[p].st == XTS_SMT_ST_RUNNING && th[p].load != XTS_SMT_WATCHDOG) s += xts_smt_tcbs[p].iters;
+    if (th[p].st == XTS_SMT_ST_RUNNING) s += xts_smt_tcbs[p].iters;
   return s;
 }
 
@@ -715,8 +717,8 @@ void xts_smt_info_begin(xts_json_t *j, const char *axis, const char *value)
   xj_kv_str(j, "value", value);
   xj_kv_str(j, "backend", smtb_name());
   xj_kv_int(j, "speed_code", smtb_speed_get());
-  xj_kv_bool(j, "watchdog", wd_running);
   xj_kv_str(j, "load_prio", "medium (libxenon task call, or 2,2,2)");
+  xj_kv_str(j, "load_pirs", "sibling: 1; other_cores: 3, 5 (0 test, 2 suite, 4 transmitter are reserved)");
 }
 
 /* a per-block info record (status info, family/block/conditions of the block being run: the core knows them) */
@@ -727,85 +729,8 @@ void xts_smt_emit_info(const char *axis, double value, const char *unit, const c
   xts_emit_block_info(NULL, cid, "info", value, unit, detail);
 }
 
-/* ---- speed ----------------------------------------------------------------------------------------------------------- */
+/* ---- speed (read only) ----------------------------------------------------------------------------------------------- */
 int xts_smt_speed_get(void) { return smtb_speed_get(); }
-
-int xts_smt_speed_set(int code, char *why, int why_size)
-{
-  xts_smt_init();
-  if (!xts_smt_all_idle()) { snprintf(why, why_size, "sibling/other-core threads in use"); return -1; }
-  for (int p = 1; p < XTS_SMT_NPIR; p++)
-    if (th[p].st == XTS_SMT_ST_LOST) { snprintf(why, why_size, "PIR %d lost earlier", p); return -1; }
-  uint32_t wd_ms = wd_timeout_ms;
-  int had_wd = wd_running;
-  if (had_wd) xts_smt_wd_stop();
-  int r = smtb_speed_set(code, why, why_size);
-  if (r == 0) cores_state = 1;                     /* the speed change starts and wakes every thread */
-  if (had_wd) xts_smt_wd_start(wd_ms);
-  return r;
-}
-
-/* ---- watchdog --------------------------------------------------------------------------------------------------------- */
-int xts_smt_wd_running(void) { return wd_running; }
-int xts_smt_wd_fired(void) { smtb_relax(4); return xts_smt_wd.fired != 0; }
-
-void xts_smt_wd_set_timeout(uint32_t ms)
-{
-  wd_timeout_ms = ms;
-  if (!wd_running) return;
-  xts_smt_wd.kick = tb10();
-  smt_lwsync();
-  xts_smt_wd.timeout = (uint32_t)(ms_ticks(ms) >> 10) + 1;
-  smt_sync();
-}
-
-int xts_smt_wd_start(uint32_t timeout_ms)
-{
-  xts_smt_init();
-  if (wd_running) return 0;
-  wd_timeout_ms = timeout_ms;
-  xts_smt_wd.fired = 0;
-  xts_smt_wd.kick = tb10();
-  xts_smt_wd.timeout = (uint32_t)(ms_ticks(timeout_ms) >> 10) + 1;
-  smt_sync();
-  int r = xts_smt_start(4, XTS_SMT_WATCHDOG, NULL, 0);
-  if (r < 0) {
-    xts_smt_wd.timeout = 0;
-    smt_sync();
-    xts_log("smt: watchdog NOT started on PIR 4: %s", xts_smt_err_name(r));
-    return r;
-  }
-  wd_running = 1;
-  xts_log("smt: watchdog on PIR 4, timeout %u ms (SMC power reboot -> XeLL reloads xenon.elf -> journal resumes)",
-          (unsigned)timeout_ms);
-  return 0;
-}
-
-void xts_smt_wd_kick(void)
-{
-  if (!wd_running) return;
-  xts_smt_wd.kick = tb10();
-  smt_lwsync();
-  smtb_relax(4);
-}
-
-void xts_smt_wd_stop(void)
-{
-  if (!wd_running) return;
-  xts_smt_wd.timeout = 0;
-  smt_sync();
-  int r = xts_smt_stop(4);
-  wd_running = 0;
-  if (r < 0) xts_log("smt: watchdog thread did not stop: %s", xts_smt_err_name(r));
-}
-
-#ifdef XTS_WATCHDOG
-/* strong definitions over src/core/watchdog.c's weak no-ops (xts/plat.h) (opt-in: CFLAGS_EXTRA=-DXTS_WATCHDOG) */
-void xts_watchdog_start(uint32_t timeout_ms) { xts_smt_wd_start(timeout_ms); }
-void xts_watchdog_kick(void) { xts_smt_wd_kick(); }
-void xts_watchdog_stop(void) { xts_smt_wd_stop(); }
-void xts_watchdog_set_timeout(uint32_t timeout_ms) { xts_smt_wd_set_timeout(timeout_ms); }   /* per-block timeout (core/main.c) */
-#endif
 
 #ifdef XTS_HOST
 /* host tests: forget every thread state (the simulation is reset by smt_host.c) */
@@ -815,9 +740,8 @@ void xts_smt_test_reset(void)
   xts_smt_sim_reset();
   memset(th, 0, sizeof th);
   memset(xts_smt_tcbs, 0, sizeof xts_smt_tcbs);
-  memset(&xts_smt_wd, 0, sizeof xts_smt_wd);
   memset(&xts_smt_rs, 0, sizeof xts_smt_rs);
-  inited = cores_state = wd_running = 0;
+  inited = cores_state = 0;
   xts_smt_hook_sibling_mode = xts_smt_hook_cores = 0;
   xts_smt_hooks_remove();
   hook_h = -1;

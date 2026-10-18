@@ -49,9 +49,9 @@ typedef struct xts_family xts_family_t;
 typedef struct xts_finish_info {
   int row;                 /* profile row */
   int blocks;              /* the family's case blocks in this row (all axis combinations) */
-  int ran_this_boot;       /* of those, executed in this boot: in-memory state built by run() covers only these */
-  int done_earlier;        /* completed in an earlier boot (resume): their records are on disk (xts_results_foreach) */
-  int quarantined;         /* blocks with a hang/crash (some or all of their cases were given up) */
+  int ran_this_boot;       /* of those, executed in this run (every block runs in one boot: there is no resume) */
+  int done_earlier;        /* always 0 (kept for source compatibility: runs are no longer resumed) */
+  int quarantined;         /* blocks with a case skipped by the compiled-in quarantine list (quarantine.txt) */
   int skipped;             /* blocks skipped (an axis could not be applied / family setup failed) */
   int complete;            /* 1 if ran_this_boot == blocks and nothing was quarantined or skipped */
 } xts_finish_info_t;
@@ -82,14 +82,12 @@ struct xts_family {
   int block_cases;             /* cases per scheduler block (0 = 64). Smaller blocks = finer hang quarantine. */
   const char *desc;
   /* optional: summaries after the family's LAST block of a profile row (all axis combinations of that row).
-   * It runs as its own journal block (key "r<row>:<family>:finish", condition vector = defaults), so it runs exactly
-   * once per row and run: after a resume it still runs (once), even when every case block finished in an earlier boot.
+   * It runs as its own block (key "r<row>:<family>:finish", condition vector = defaults), exactly once per row and run.
    * ctx: c = a synthetic case (id "finish", insn -1), case_index -1, repeat 0, fin = what the row did. Records it emits
-   * belong to the finish block; set case_id per record. In-memory state collected by run() covers only the blocks of
-   * THIS boot (fin->ran_this_boot): recompute from xts_results_foreach() or emit a record noting what is missing.
-   * Called after setup() (setup runs first if this boot has not called it yet); not called if setup() failed.
-   * A hang/crash inside finish() is recorded like any block (status hang/crash, case "*") and not retried. <0 = error
-   * (recorded as fail if nothing was emitted). */
+   * belong to the finish block; set case_id per record. The row's records are available through xts_results_foreach()
+   * (kept in RAM for families with a finish hook). Called after setup() (setup runs first if it has not been called
+   * yet); not called if setup() failed. A crash/hang of the test core inside finish() stops the run like any case
+   * (crash/hang record, CRASH/HANG report, END). <0 = error (recorded as fail if nothing was emitted). */
   int (*finish)(xts_ctx_t *ctx);
 };
 
@@ -105,10 +103,12 @@ const char *xts_family_name(const xts_family_t *f);     /* normalised name */
 const xts_family_t *xts_family_find(const char *name);
 int xts_family_has_axis(const xts_family_t *f, const char *axis);
 
-/* Results of this run so far (every boot), for finish() summaries: calls cb for every results.jsonl line whose family is
- * `family` (NULL = all), after flushing the current block's buffered records. cb returns non-zero to stop. Returns the
- * number of lines passed to cb, or -1 if there is no run directory (host unit tests without a run). Lines are complete
- * JSON objects (no newline), at most 32 KB. */
+/* Results of this run so far, for finish() summaries: calls cb for every results.jsonl line (REC message) whose family is
+ * `family` (NULL = all, in emission order), from the in-RAM results store (src/core/results.c: nothing is read from or
+ * written to any storage). cb returns non-zero to stop. Returns the number of lines passed to cb, or -1 outside a run
+ * (host unit tests without one). Lines are complete JSON objects (no newline), at most 32 KB. Bounded at 64 MB: lines of
+ * families WITH a .finish hook are always kept (up to the bound), lines of other families are dropped once the bound is
+ * reached (they are still sent; only xts_results_foreach no longer sees them; run.log says so). */
 int xts_results_foreach(const char *family, int (*cb)(const char *json_line, void *ud), void *ud);
-const char *xts_run_dir(void);   /* "<root>/xts/<tag>/<run_id>" of the current run, "" outside a run */
+const char *xts_run_dir(void);   /* "<console_tag>/<run_id>": where the receiver files this run; "" outside a run */
 #endif

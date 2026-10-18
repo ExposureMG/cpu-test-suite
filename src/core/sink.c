@@ -1,35 +1,29 @@
-/* Output sinks: results.jsonl, results.csv, failures.jsonl, run.log, temps.csv, summary.json.
- * Records are buffered in RAM and written only at block boundaries (xts_sink_boundary: fwrite + fflush + fsync of every
- * file - libxenon's newlib routes fsync to libfat's _FAT_fsync_r - then fatFlush), to files that stay open for the whole
- * run, so a hang or crash loses at most the current block, which the journal then marks. While cases run
- * (xts_cases_running) no file is written: a buffer that fills grows instead, main.c ends the chunk at the next case
- * boundary (XTS_SINK_HIGH_WATER), and any file operation attempted then is refused and counted as a guard violation.
- * Every write, flush, fsync, open and close is checked: errors are counted (status line, run.log, "write_errors").
- * xts_log lines go to run.log only (also the ones logged before xts_sink_open: buffered, written at the first flush);
- * the screen gets errors (xts_screen_error) and a status line at most once per second. */
+/* Output sink: every record is one REC message (the exact results.jsonl line), every xts_log line one LOG message, block
+ * ends are BLOCK messages, the run starts with HELLO x3 and ends with END x3 (docs/PROTOCOL.md). Nothing is written on
+ * the console: results.csv, failures.jsonl, summary.json and the rest are produced by the receiver (tools/xts_recv.py).
+ *
+ * Every send goes through xts_core_send, which keeps what END reports: messages per type, the last frame seq, send
+ * failures (messages that could not be queued) and rec_hash (FNV-1a 64 over the REC payloads in message order).
+ * REC lines are also kept in the in-RAM results store (results.c) for xts_results_foreach.
+ * Log lines before HELLO (and in host unit tests without a run) are kept in a RAM buffer and sent right after HELLO.
+ * Sends happen only on the suite core between test-core executions, never while a case is being measured. */
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include "core.h"
+#include "netfmt.h"
 
-enum { B_RESULTS, B_CSV, B_FAIL, B_LOG, B_TEMPS, NB };
-static const char *const fname[NB] = { "results.jsonl", "results.csv", "failures.jsonl", "run.log", "temps.csv" };
-static struct { char *p; size_t len, cap; } buf[NB];
-static xts_pfile_t pf[NB];
-static char dir[256], run_id[40];
+static char run_id[40], tag[64];
 static uint64_t seq;
-static int opened;
+static int opened, helloed;
 static char cur_block[160], cur_family[48];
 static xts_condvec_t cur_cv;
 static uint32_t st_count[XTS_ST_COUNT];
-static unsigned io_errors;
-static double flush_ms_total;
-volatile int xts_fat_busy;
-volatile int xts_cases_running;
-static unsigned guard_violations;
+static uint64_t msg_count[XTS_PK_MAX + 1], rec_hash = XTS_FNV64_INIT, block_records;
+static uint32_t last_seq, send_failures;
+static int sending;               /* recursion guard: a failing send logs, the log line sends */
 xts_sink_tap_fn xts_sink_tap;
 #ifdef XTS_HOST
 int xts_vocab_check = 1;
@@ -37,238 +31,98 @@ int xts_vocab_check = 1;
 int xts_vocab_check = 0;      /* console: the host dry run already checked every family's records */
 #endif
 
-#define BUF_CAP (2u << 20)
-#define BUF_MAX (64u << 20)      /* growth limit while cases run (a chunk ends at XTS_SINK_HIGH_WATER long before) */
-static unsigned dropped_bytes;
-#define CSV_HEADER "run_id,seq,family,case_id,mnem,word,cond,block,metric,value,unit,n,min,median,mad,fit_r2,status\n"
+/* log lines waiting for HELLO */
+#define PRE_CAP (256u << 10)
+static char *pre;
+static size_t pre_len;
+static unsigned pre_dropped;
 
-/* ---- error accounting ---- */
-void xts_io_error(const char *what, const char *path)
+uint32_t xts_core_send(int type, const char *payload, uint32_t len)
 {
-  io_errors++;
-  if (io_errors <= 5) xts_screen_error("USB write error #%u: %s %s", io_errors, what, path ? path : "");
-  else xts_log("USB write error #%u: %s %s", io_errors, what, path ? path : "");
-}
-
-unsigned xts_io_error_count(void) { return io_errors; }
-unsigned xts_guard_violations(void) { return guard_violations; }
-
-/* the write guard: no file operation while cases run (the stick must stay consistent whenever test code executes) */
-int xts_write_refused(const char *what, const char *path)
-{
-  if (!xts_cases_running) return 0;
-  guard_violations++;
-  if (guard_violations <= 3)
-    xts_screen_error("BUG: file %s while cases run refused (%s): files are written at block boundaries only", what,
-                     path ? path : "");
-  else
-    xts_log("BUG: file %s while cases run refused (%s): files are written at block boundaries only", what, path ? path : "");
-  return 1;
-}
-
-/* storage poisoned (the disc guard latched an error): no more file I/O at all, one message on screen and in the log
- * buffer. Returns 1 when writing must stop. */
-int xts_storage_dead(void)
-{
-  static int told;
-  xts_storage_status_t st;
-  if (!xts_plat_storage_status(&st)) return 0;
-  if (!told) {
-    told = 1;
-    io_errors++;
-    xts_screen_error("STORAGE ERROR: %s of sectors %lu-%lu failed (%s). XTS stopped writing. Stop using this stick until "
-                     "it has been checked (Windows: chkdsk /f, Linux: fsck.fat -n).", st.op, (unsigned long)st.sector,
-                     (unsigned long)(st.sector + (st.count ? st.count - 1 : 0)), st.why);
+  if (sending) return 0;
+  sending = 1;
+  uint32_t s = xts_net_send(type, payload, len);
+  if (s) {
+    if (type > 0 && type <= XTS_PK_MAX) msg_count[type]++;
+    if (s > last_seq) last_seq = s;
+    if (type == XTS_PK_REC) rec_hash = xts_fnv1a64(rec_hash, payload, len);
+  } else {
+    send_failures++;
   }
-  return 1;
+  sending = 0;
+  if (!s && send_failures <= 5)
+    xts_screen_error("transport: %s message of %u bytes could not be queued (failure #%u)", xts_net_type_name(type),
+                     (unsigned)len, (unsigned)send_failures);
+  return s;
 }
 
-/* ---- persistent files ---- */
-int xts_pf_open(xts_pfile_t *p, const char *path)
-{
-  if (p->f) return 0;
-  if (path != p->path) snprintf(p->path, sizeof p->path, "%s", path);
-  if (xts_write_refused("open", p->path)) return -1;
-  if (xts_storage_dead()) return -1;
-  xts_fat_busy++;
-  p->f = fopen(p->path, "ab");
-  xts_fat_busy--;
-  p->dirty = 0;
-  if (!p->f) { xts_io_error("open", p->path); return -1; }
-  return 0;
-}
-
-int xts_pf_write(xts_pfile_t *p, const void *data, size_t n)
-{
-  if (!n) return 0;
-  if (xts_write_refused("write", p->path)) return -1;
-  if (!p->f && (!p->path[0] || xts_pf_open(p, p->path) < 0)) return -1;
-  if (xts_storage_dead()) return -1;
-  xts_fat_busy++;
-  size_t w = fwrite(data, 1, n, p->f);
-  xts_fat_busy--;
-  p->dirty = 1;
-  if (w != n) { xts_io_error("write", p->path); clearerr(p->f); return -1; }
-  return 0;
-}
-
-int xts_pf_sync(xts_pfile_t *p)
-{
-  if (!p->f || !p->dirty) return 0;
-  if (xts_write_refused("sync", p->path)) return -1;
-  if (xts_storage_dead()) return -1;
-  int r = 0;
-  xts_fat_busy++;
-  if (fflush(p->f) != 0) { r = -1; clearerr(p->f); }
-  else if (fsync(fileno(p->f)) != 0) r = -2;
-  xts_fat_busy--;
-  p->dirty = 0;
-  if (r) xts_io_error(r == -1 ? "flush" : "fsync", p->path);
-  return r;
-}
-
-void xts_pf_close(xts_pfile_t *p)
-{
-  if (!p->f) return;
-  if (xts_write_refused("close", p->path)) return;
-  if (xts_storage_dead()) { p->f = NULL; return; }   /* never touch libfat again (the FILE is dropped) */
-  xts_pf_sync(p);
-  xts_fat_busy++;
-  int r = fclose(p->f);
-  xts_fat_busy--;
-  p->f = NULL;
-  if (r != 0) xts_io_error("close", p->path);
-}
-
-static void bput(int b, const char *s, size_t n)
-{
-  if (!buf[b].p) {
-    buf[b].p = malloc(BUF_CAP);
-    buf[b].cap = buf[b].p ? BUF_CAP : 0;
-  }
-  if (buf[b].len + n > buf[b].cap) {
-    if (opened && !xts_cases_running) {        /* outside cases: write out (block boundary work, resume records) */
-      xts_pf_write(&pf[b], buf[b].p, buf[b].len);
-      buf[b].len = 0;
-    }
-    if (buf[b].len + n > buf[b].cap) {         /* while cases run (or before the sink is open): grow, never write */
-      size_t nc = buf[b].cap ? buf[b].cap : BUF_CAP;
-      while (nc < buf[b].len + n && nc < BUF_MAX) nc *= 2;
-      char *np = nc >= buf[b].len + n ? realloc(buf[b].p, nc) : NULL;
-      if (!np) {
-        if (!dropped_bytes) xts_screen_error("sink buffer full (%lu bytes): output dropped", (unsigned long)buf[b].len);
-        dropped_bytes += (unsigned)n;
-        return;
-      }
-      buf[b].p = np;
-      buf[b].cap = nc;
-    }
-  }
-  memcpy(buf[b].p + buf[b].len, s, n);
-  buf[b].len += n;
-}
-
-size_t xts_sink_pending(void)
-{
-  size_t m = 0;
-  for (int b = 0; b < NB; b++)
-    if (buf[b].len > m) m = buf[b].len;
-  return m;
-}
-
-static void bprintf(int b, const char *fmt, ...)
-{
-  char tmp[2048];
-  va_list ap;
-  va_start(ap, fmt);
-  int n = vsnprintf(tmp, sizeof tmp, fmt, ap);
-  va_end(ap);
-  if (n > (int)sizeof tmp - 1) n = sizeof tmp - 1;
-  if (n > 0) bput(b, tmp, (size_t)n);
-}
-
-const char *xts_sink_dir(void) { return dir; }
-const char *xts_run_dir(void) { return opened ? dir : ""; }
-uint64_t xts_sink_seq(void) { return seq; }
-
-int xts_sink_open(const char *d, const char *rid, uint64_t first_seq)
-{
-  char path[320];
-  snprintf(dir, sizeof dir, "%s", d);
-  snprintf(run_id, sizeof run_id, "%s", rid);
-  seq = first_seq;
-  memset(st_count, 0, sizeof st_count);
-  int fresh[NB], bad = 0;
-  for (int b = 0; b < NB; b++) {
-    fresh[b] = !xts_file_exists(xts_path(path, sizeof path, dir, fname[b], NULL, NULL));
-    if (xts_pf_open(&pf[b], path) < 0) bad = -1;
-  }
-  opened = 1;
-  if (fresh[B_CSV]) xts_pf_write(&pf[B_CSV], CSV_HEADER, strlen(CSV_HEADER));
-  if (fresh[B_TEMPS]) {
-    const char *h = "block,tb,cpu,gpu,edram,board\n";
-    xts_pf_write(&pf[B_TEMPS], h, strlen(h));
-  }
-  for (int b = 0; b < NB; b++) xts_pf_sync(&pf[b]);
-  return bad;
-}
-
-void xts_sink_flush(void)
-{
-  if (!opened) return;
-  uint64_t t0 = xts_tb();
-  for (int b = 0; b < NB; b++) {
-    if (buf[b].len) {
-      xts_pf_write(&pf[b], buf[b].p, buf[b].len);
-      buf[b].len = 0;
-    }
-    xts_pf_sync(&pf[b]);
-  }
-  flush_ms_total += (double)(xts_tb() - t0) * 1000.0 / (double)xts_tb_hz();
-}
-
-int xts_sink_boundary(void)
-{
-  if (!opened) return 0;
-  xts_sink_flush();
-  if (xts_storage_dead() || xts_write_refused("flush", "(volume)")) return -1;
-  uint64_t t0 = xts_tb();
-  xts_fat_busy++;
-  int r = xts_plat_storage_flush();
-  xts_fat_busy--;
-  flush_ms_total += (double)(xts_tb() - t0) * 1000.0 / (double)xts_tb_hz();
-  if (r) xts_io_error("flush (fatFlush)", xts_plat_root());
-  return r ? -1 : 0;
-}
-
-void xts_sink_flush_block(const char *key)
-{
-  if (!opened) return;
-  size_t bytes = 0;
-  for (int b = 0; b < NB; b++) bytes += buf[b].len;
-  uint64_t t0 = xts_tb();
-  xts_sink_boundary();
-  double ms = (double)(xts_tb() - t0) * 1000.0 / (double)xts_tb_hz();
-  uint64_t cn = 0;
-  double cms = 0, cmax = 0;
-  xts_slot_crumb_block_stats(&cn, &cms, &cmax);
-  xts_log("flush: block %s %lu bytes in %.1f ms (write + fsync + fatFlush); breadcrumbs %llu in %.1f ms (max %.2f ms)", key,
-          (unsigned long)bytes, ms, (unsigned long long)cn, cms, cmax);   /* written with the next flush */
-}
-
-double xts_sink_flush_ms_total(void) { return flush_ms_total; }
+uint32_t xts_sink_send_failures(void) { return send_failures; }
+uint64_t xts_sink_msg_count(int type) { return type > 0 && type <= XTS_PK_MAX ? msg_count[type] : 0; }
 const uint32_t *xts_sink_status_counts(void) { return st_count; }
+int xts_sink_is_open(void) { return opened; }
+uint64_t xts_sink_seq(void) { return seq; }
+const char *xts_sink_run_id(void) { return run_id; }
+const xts_condvec_t *xts_sink_block_cv(void) { return &cur_cv; }
+/* where the receiver files this run (relative to its output directory) */
+const char *xts_run_dir(void)
+{
+  static char d[120];
+  if (!opened) return "";
+  snprintf(d, sizeof d, "%s/%s", tag, run_id);
+  return d;
+}
+
+int xts_sink_open(const char *rid, const char *t)
+{
+  snprintf(run_id, sizeof run_id, "%s", rid ? rid : "");
+  snprintf(tag, sizeof tag, "%s", t ? t : "");
+  seq = 0;
+  memset(st_count, 0, sizeof st_count);
+  memset(msg_count, 0, sizeof msg_count);
+  rec_hash = XTS_FNV64_INIT;
+  last_seq = send_failures = 0;
+  block_records = 0;
+  xts_results_reset();
+  opened = 1;
+  helloed = 0;
+  return 0;
+}
+
+static void pre_flush(void)
+{
+  size_t o = 0;
+  while (o < pre_len) {
+    size_t l = strlen(pre + o);
+    xts_core_send(XTS_PK_LOG, pre + o, (uint32_t)l);
+    o += l + 1;
+  }
+  pre_len = 0;
+  if (pre_dropped) {
+    char l[96];
+    snprintf(l, sizeof l, "[%10.3f] %u log line(s) before HELLO did not fit the buffer and were dropped",
+             (double)xts_tb() / (double)xts_tb_hz(), pre_dropped);
+    xts_core_send(XTS_PK_LOG, l, (uint32_t)strlen(l));
+    pre_dropped = 0;
+  }
+}
+
+void xts_sink_hello(const char *hello)
+{
+  uint32_t n = (uint32_t)strlen(hello);
+  for (int i = 0; i < 3; i++) xts_core_send(XTS_PK_HELLO, hello, n);
+  helloed = 1;
+  pre_flush();
+}
 
 void xts_sink_discard(void)
 {
-  for (int b = 0; b < NB; b++) buf[b].len = 0;
+  pre_len = 0;
+  pre_dropped = 0;
 }
 
 void xts_sink_close(void)
 {
-  xts_sink_flush();
-  for (int b = 0; b < NB; b++) xts_pf_close(&pf[b]);
-  opened = 0;
+  opened = helloed = 0;
 }
 
 void xts_sink_set_block(const char *key, const xts_condvec_t *cv, const char *family)
@@ -277,12 +131,79 @@ void xts_sink_set_block(const char *key, const xts_condvec_t *cv, const char *fa
   snprintf(cur_family, sizeof cur_family, "%s", family ? family : "");
   if (cv) cur_cv = *cv;
   else memset(&cur_cv, 0, sizeof cur_cv);
+  block_records = 0;
 }
 
-void xts_sink_log_raw(const char *line)
+void xts_sink_block_end(const char *key, const char *extra)
 {
-  bput(B_LOG, line, strlen(line));
-  bput(B_LOG, "\n", 1);
+  if (!helloed) return;
+  char b[1024];
+  xts_json_t j;
+  xj_init(&j, b, sizeof b);
+  xj_obj(&j);
+  xj_kv_str(&j, "block", key);
+  xj_kv_uint(&j, "records", block_records);
+  xj_kv_uint(&j, "seq", seq);
+  if (extra && extra[0]) xj_members(&j, extra);
+  xj_finish(&j);
+  xts_core_send(XTS_PK_BLOCK, b, (uint32_t)j.len);
+  block_records = 0;
+}
+
+int xts_sink_end(const char *status)
+{
+  if (!helloed) return -1;
+  char b[2048], h[20];
+  xts_json_t j;
+  xj_init(&j, b, sizeof b);
+  xj_obj(&j);
+  xj_kv_str(&j, "status", status);
+  xj_kv_uint(&j, "last_seq", last_seq);
+  xj_key(&j, "messages");
+  xj_obj(&j);
+  for (int t = 1; t <= XTS_PK_MAX; t++)
+    if (t != XTS_PK_END) xj_kv_uint(&j, xts_net_type_name(t), msg_count[t]);
+  xj_end(&j);
+  snprintf(h, sizeof h, "%016llx", (unsigned long long)rec_hash);
+  xj_kv_str(&j, "rec_hash", h);
+  xj_kv_str(&j, "run_id", run_id);
+  xj_kv_uint(&j, "records", seq);
+  xj_kv_uint(&j, "send_failures", send_failures);
+  xj_key(&j, "status_counts");
+  xj_obj(&j);
+  for (int s = 0; s < XTS_ST_COUNT; s++) xj_kv_uint(&j, xts_status_name(s), st_count[s]);
+  xj_end(&j);
+  xts_net_stats_t ns;
+  memset(&ns, 0, sizeof ns);
+  xts_net_stats(&ns);
+  xj_key(&j, "net");
+  xj_obj(&j);
+  xj_kv_uint(&j, "frames", ns.frames);
+  xj_kv_uint(&j, "frame_copies", ns.frame_copies);
+  xj_kv_uint(&j, "bytes", ns.bytes);
+  xj_kv_uint(&j, "ring_full_waits", ns.ring_full_waits);
+  xj_kv_uint(&j, "send_failures", ns.send_failures);
+  xj_kv_uint(&j, "tx_timeouts", ns.tx_timeouts);
+  xj_kv_uint(&j, "fence_waits", ns.fence_waits);
+  xj_kv_uint(&j, "fence_wait_ticks", ns.fence_wait_ticks);
+  xj_end(&j);
+  xj_finish(&j);
+  for (int i = 0; i < 3; i++) xts_core_send(XTS_PK_END, b, (uint32_t)j.len);
+  return xts_net_drain(10u * 1000u * 1000u);
+}
+
+/* ---- log ---- */
+static void log_line(const char *line)
+{
+  size_t n = strlen(line);
+  if (helloed) {
+    xts_core_send(XTS_PK_LOG, line, (uint32_t)n);
+    return;
+  }
+  if (!pre) pre = malloc(PRE_CAP);
+  if (!pre || pre_len + n + 1 > PRE_CAP) { pre_dropped++; return; }
+  memcpy(pre + pre_len, line, n + 1);
+  pre_len += n + 1;
 }
 
 void xts_log(const char *fmt, ...)
@@ -294,8 +215,8 @@ void xts_log(const char *fmt, ...)
   va_end(ap);
   char ts[700];
   snprintf(ts, sizeof ts, "[%10.3f] %s", (double)xts_tb() / (double)xts_tb_hz(), line);
-  xts_crash_log_note(ts);         /* RAM ring of the last lines: the crash report quotes it */
-  xts_sink_log_raw(ts);           /* run.log only; before xts_sink_open it stays buffered until the first flush */
+  xts_crash_log_note(ts);         /* RAM ring of the last lines: crash/hang reports quote it */
+  log_line(ts);
 }
 
 void xts_screen_error(const char *fmt, ...)
@@ -339,6 +260,7 @@ void xts_status(const char *fmt, ...)
   va_end(ap);
 }
 
+/* ---- records ---- */
 void xts_record_init(xts_record_t *r)
 {
   memset(r, 0, sizeof *r);
@@ -346,25 +268,6 @@ void xts_record_init(xts_record_t *r)
   r->metric = "result";
   r->unit = "";
   r->status = XTS_ST_PASS;
-}
-
-static void csv_field(char *out, size_t cap, const char *s)
-{
-  if (!strpbrk(s, ",\"\n")) { snprintf(out, cap, "%s", s); return; }
-  size_t o = 0;
-  if (o < cap - 1) out[o++] = '"';
-  for (; *s && o + 3 < cap; s++) {
-    if (*s == '"') out[o++] = '"';
-    out[o++] = *s == '\n' ? ' ' : *s;
-  }
-  out[o++] = '"';
-  out[o] = 0;
-}
-
-static void num(char *out, size_t cap, double v)
-{
-  if (isnan(v) || isinf(v)) snprintf(out, cap, "null");
-  else snprintf(out, cap, "%.10g", v);
 }
 
 /* vocabulary check (host): unknown metric/unit -> logged once per name, "vocab_warning" added to the detail */
@@ -399,14 +302,14 @@ static const char *vocab_detail(const xts_record_t *r, char *out, int cap)
 static void write_record(const char *family, const char *case_id, const char *mnem, int has_word, uint32_t word,
                          const char *block, const xts_condvec_t *cv, const xts_record_t *r)
 {
-  static char json[24576];        /* a 16 KB detail (timing emitter) + the other fields */
+  static char json[24576];        /* a 16 KB detail (timing emitter) + the other fields; < XTS_NET_MAX_MESSAGE */
   static char vdet[24576];
   xts_record_t rv;
   if (xts_vocab_check) {
     const char *d = vocab_detail(r, vdet, sizeof vdet);
     if (d != r->detail) { rv = *r; rv.detail = d; r = &rv; }
   }
-  char wbuf[12], cond[512], v[6][32];
+  char wbuf[12];
   xts_json_t j;
   seq++;
   if (has_word) snprintf(wbuf, sizeof wbuf, "%08X", word);
@@ -450,25 +353,11 @@ static void write_record(const char *family, const char *case_id, const char *mn
   }
   if (xts_sink_tap) xts_sink_tap(family, case_id, r, json);
   if (r->status >= 0 && r->status < XTS_ST_COUNT) st_count[r->status]++;
-  bput(B_RESULTS, json, strlen(json));
-  bput(B_RESULTS, "\n", 1);
-  if (r->status == XTS_ST_FAIL || r->status == XTS_ST_HANG || r->status == XTS_ST_CRASH) {
-    bput(B_FAIL, json, strlen(json));
-    bput(B_FAIL, "\n", 1);
-  }
-  xts_cond_format(cv, cond, sizeof cond, 0);
-  char f_case[160], f_cond[600], f_fam[64], f_block[200], f_metric[64], f_unit[32];
-  csv_field(f_case, sizeof f_case, case_id);
-  csv_field(f_cond, sizeof f_cond, cond);
-  csv_field(f_fam, sizeof f_fam, family);
-  csv_field(f_block, sizeof f_block, block);
-  csv_field(f_metric, sizeof f_metric, r->metric ? r->metric : "result");
-  csv_field(f_unit, sizeof f_unit, r->unit ? r->unit : "");
-  num(v[0], 32, r->value); num(v[1], 32, r->n); num(v[2], 32, r->min); num(v[3], 32, r->median);
-  num(v[4], 32, r->mad); num(v[5], 32, r->fit_r2);
-  bprintf(B_CSV, "%s,%llu,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n", run_id, (unsigned long long)seq, f_fam, f_case,
-          mnem ? mnem : "", wbuf, f_cond, f_block, f_metric, v[0], f_unit, v[1], v[2], v[3], v[4], v[5],
-          xts_status_name(r->status));
+  block_records++;
+  if (!opened) return;
+  uint32_t len = (uint32_t)strlen(json);
+  xts_results_add(family, seq, json, len);
+  if (helloed) xts_core_send(XTS_PK_REC, json, len);   /* before HELLO (host unit tests): kept in RAM only */
 }
 
 void xts_emit(xts_ctx_t *ctx, const xts_record_t *r)
@@ -525,173 +414,4 @@ void xts_emit_block_info(xts_ctx_t *ctx, const char *case_id, const char *metric
   r.mnem = "";
   if (ctx) { xts_emit(ctx, &r); return; }
   write_record(cur_family[0] ? cur_family : "core", r.case_id, "", 0, 0, cur_block[0] ? cur_block : "-", &cur_cv, &r);
-}
-
-int xts_results_foreach(const char *family, int (*cb)(const char *json_line, void *ud), void *ud)
-{
-  char path[320], needle[96];
-  if (!opened) return -1;
-  if (xts_write_refused("read-back (xts_results_foreach flushes the sinks)", "results.jsonl")) return -1;
-  xts_sink_flush();
-  xts_pf_close(&pf[B_RESULTS]);   /* no second handle on a file open for writing (libfat) */
-  xts_fat_busy++;
-  FILE *f = fopen(xts_path(path, sizeof path, dir, "results.jsonl", NULL, NULL), "r");
-  xts_fat_busy--;
-  if (!f) { xts_pf_open(&pf[B_RESULTS], pf[B_RESULTS].path); return 0; }
-  xts_fat_busy++;
-  static char line[32768];
-  if (family) snprintf(needle, sizeof needle, "\"family\":\"%s\"", family);
-  int n = 0, skipping = 0;
-  while (fgets(line, sizeof line, f)) {
-    size_t l = strlen(line);
-    int complete = l && line[l - 1] == '\n';
-    if (skipping) { skipping = !complete; continue; }    /* tail of an over-long line */
-    if (!complete) { skipping = 1; continue; }
-    line[--l] = 0;
-    if (family && !strstr(line, needle)) continue;
-    n++;
-    xts_fat_busy--;
-    int stop = cb(line, ud);
-    xts_fat_busy++;
-    if (stop) break;
-  }
-  fclose(f);
-  xts_fat_busy--;
-  xts_pf_open(&pf[B_RESULTS], pf[B_RESULTS].path);
-  return n;
-}
-
-void xts_sink_temps(const char *block_key)
-{
-  uint16_t t[4];
-  if (xts_smc_temps(t) < 0) return;
-  bprintf(B_TEMPS, "%s,%llu,%.2f,%.2f,%.2f,%.2f\n", block_key, (unsigned long long)xts_tb(), t[0] / 256.0, t[1] / 256.0,
-          t[2] / 256.0, t[3] / 256.0);
-}
-
-/* ---- summary.json from results.csv (covers every boot of the run) ---- */
-#define SUM_MAX 512
-static struct { char key[96]; uint32_t c[XTS_ST_COUNT]; } sum[SUM_MAX];
-static int nsum;
-
-static void count(const char *key, int st)
-{
-  for (int i = 0; i < nsum; i++)
-    if (!strcmp(sum[i].key, key)) { sum[i].c[st]++; return; }
-  if (nsum >= SUM_MAX) return;
-  snprintf(sum[nsum].key, sizeof sum[nsum].key, "%s", key);
-  memset(sum[nsum].c, 0, sizeof sum[nsum].c);
-  sum[nsum++].c[st]++;
-}
-
-/* split one CSV line into fields (handles quotes); returns field count */
-static int csv_split(char *line, char **f, int max)
-{
-  int n = 0;
-  char *p = line;
-  while (*p && n < max) {
-    if (*p == '"') {
-      char *o = ++p;
-      f[n++] = o;
-      while (*p) {
-        if (*p == '"' && p[1] == '"') { *o++ = '"'; p += 2; continue; }
-        if (*p == '"') { p++; break; }
-        *o++ = *p++;
-      }
-      *o = 0;
-      if (*p == ',') p++;
-    } else {
-      f[n++] = p;
-      while (*p && *p != ',' && *p != '\n' && *p != '\r') p++;
-      if (*p == ',') *p++ = 0;
-      else { *p = 0; break; }
-    }
-  }
-  return n;
-}
-
-int xts_sink_summary(const char *d)
-{
-  char path[320], line[4096];      /* results.csv rows: no detail column */
-  nsum = 0;
-  if (xts_storage_dead() || xts_write_refused("summary", "summary.json")) return -1;
-  if (opened) xts_pf_close(&pf[B_CSV]);
-  xts_fat_busy++;
-  FILE *f = fopen(xts_path(path, sizeof path, d, "results.csv", NULL, NULL), "r");
-  xts_fat_busy--;
-  if (opened) xts_pf_open(&pf[B_CSV], pf[B_CSV].path);
-  if (!f) return -1;
-  xts_fat_busy++;
-  uint32_t total[XTS_ST_COUNT] = { 0 };
-  uint64_t nrec = 0;
-  while (fgets(line, sizeof line, f)) {
-    char *fl[20];
-    if (!strncmp(line, "run_id,", 7)) continue;
-    int n = csv_split(line, fl, 20);
-    if (n < 17) continue;
-    int st = -1;
-    for (int s = 0; s < XTS_ST_COUNT; s++)
-      if (!strcmp(fl[16], xts_status_name(s))) st = s;
-    if (st < 0) continue;
-    nrec++;
-    total[st]++;
-    char key[96];
-    snprintf(key, sizeof key, "F%s", fl[2]);
-    count(key, st);
-    char *cond = fl[6], *save = NULL;
-    for (char *kv = strtok_r(cond, ";", &save); kv; kv = strtok_r(NULL, ";", &save)) {
-      snprintf(key, sizeof key, "A%s", kv);
-      count(key, st);
-    }
-  }
-  fclose(f);
-  xts_fat_busy--;
-  static char out[1 << 17];
-  xts_json_t j;
-  xj_init(&j, out, sizeof out);
-  xj_obj(&j);
-  xj_kv_str(&j, "run_id", run_id);
-  xj_kv_str(&j, "profile", xts_active_profile_name ? xts_active_profile_name : "");
-  xj_kv_uint(&j, "records", nrec);
-  xj_key(&j, "status");
-  xj_obj(&j);
-  for (int s = 0; s < XTS_ST_COUNT; s++) xj_kv_uint(&j, xts_status_name(s), total[s]);
-  xj_end(&j);
-  for (int pass = 0; pass < 2; pass++) {
-    xj_key(&j, pass ? "by_axis_value" : "by_family");
-    xj_obj(&j);
-    for (int i = 0; i < nsum; i++) {
-      if (sum[i].key[0] != (pass ? 'A' : 'F')) continue;
-      xj_key(&j, sum[i].key + 1);
-      xj_obj(&j);
-      for (int s = 0; s < XTS_ST_COUNT; s++)
-        if (sum[i].c[s]) xj_kv_uint(&j, xts_status_name(s), sum[i].c[s]);
-      xj_end(&j);
-    }
-    xj_end(&j);
-  }
-  xj_kv_uint(&j, "write_errors", io_errors);
-  xj_kv_uint(&j, "guard_violations", guard_violations);   /* file operations attempted while cases ran (refused) */
-  xj_kv_uint(&j, "dropped_bytes", dropped_bytes);
-  char cs[600];
-  xts_slot_crumb_stats(cs, sizeof cs);
-  xj_kv_str(&j, "breadcrumbs", cs);
-  xj_kv_double(&j, "flush_ms_total", flush_ms_total);
-  xts_storage_status_t sst;
-  xts_plat_storage_status(&sst);
-  xj_key(&j, "storage");                       /* the disc guard's view of this boot (src/plat/disc_guard.c) */
-  xj_obj(&j);
-  xj_kv_bool(&j, "guard", sst.guard);
-  xj_kv_bool(&j, "poisoned", sst.poisoned);
-  xj_kv_uint(&j, "sectors_read", sst.sectors_read);
-  xj_kv_uint(&j, "sectors_written", sst.sectors_written);
-  xj_kv_uint(&j, "device_reads", sst.device_reads);
-  xj_kv_uint(&j, "device_writes", sst.device_writes);
-  xj_kv_uint(&j, "read_retries", sst.read_retries);
-  xj_kv_uint(&j, "write_repairs", sst.write_repairs);
-  xj_kv_double(&j, "guard_ms", sst.guard_ms);
-  xj_end(&j);
-  xj_kv_bool(&j, "truncated", j.truncated);
-  xj_finish(&j);
-  return xts_write_small(xts_path(path, sizeof path, d, "summary.json", NULL, NULL), out);
 }

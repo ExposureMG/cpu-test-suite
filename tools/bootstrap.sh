@@ -15,7 +15,7 @@ tmp=$(mktemp -d)
 printf ' vor128 100,101,127\n vmaddfp128 1,2,3,1\n lvx128 64,3,4\n' > "$tmp/t.s"
 "$DEVKITXENON/bin/xenon-as" -mvmx128 "$tmp/t.s" -o "$tmp/t.o" 2>/dev/null && ok "xenon-as assembles VMX128 (-mvmx128)" || bad "xenon-as lacks VMX128"
 rm -rf "$tmp"
-for f in usr/lib/libxenon.a usr/lib/libfat.a usr/include/libfat/fat.h usr/include/usb/usbmain.h usr/include/xb360/xb360.h app.lds; do
+for f in usr/lib/libxenon.a usr/include/xb360/xb360.h app.lds; do
   [ -f "$DEVKITXENON/$f" ] && ok "$f" || bad "$DEVKITXENON/$f missing"
 done
 [ -f "$LIBXENON_SRC/drivers/ppc/except.S" ] && ok "libxenon except.S (patched copy generated into \$(BUILD)/gen)" || bad "$LIBXENON_SRC/drivers/ppc/except.S missing (set LIBXENON_SRC)"
