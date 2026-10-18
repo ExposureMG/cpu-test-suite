@@ -86,6 +86,11 @@ static int sk_run(const xts_case_t *c, xts_ctx_t *ctx)
     break;
   case 4: {
     xts_tspec_t s = XTS_TSPEC_DEFAULT;
+    /* longer kernels than the default (256 iterations, depths 4-32 gave only a few timebase ticks per sample: the
+     * first hardware smoke run measured 1.95 cycles but missed the quality gate) */
+    static const int deep[6] = { 32, 64, 96, 128, 192, 256 };
+    for (int i = 0; i < 6; i++) s.depths[i] = deep[i];
+    s.iters = 2048;
     s.body = add_body;
     s.unit = "addx";
     xts_tresult_t r;

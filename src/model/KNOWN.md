@@ -11,7 +11,14 @@ family) is either fixed in the model or recorded here with its evidence.
 - mtfsf 0xFF does not write FEX/VX (summary bits); mtvscr keeps only NJ and SAT.
 
 ## Open
-- (none yet)
+- **vmsum4fp128: hardware is 1 ULP lower than the model on a sign-mixed case** (first console smoke run, 2026-10-19,
+  Jasper, PVR 0x00710500; exec.vmx128 case vmsum4fp128#12, word 173945D8, sf=64, VSCR 0). Inputs (VA = VD = v89,
+  VB = v8): A = AF3D0257 96C316AE 37EFC7C9 C5106AAB, B = 80000001 007FFFFF BF000000 4F000000. Model D4906AAB in every
+  lane, hardware D4906AAA. The dominant product (lane 3, about -4.96e12) is negative while the first product (lane 0,
+  a tiny negative times a negative denormal) is positive; the model sums in one's complement relative to the FIRST
+  product's sign, so the reference sign is the likely error (alternatives: the largest product's sign, or denormal
+  B lanes handled differently with NJ=0). Not fixed yet: wait for the semantic profile's targeted vmsum cases (sign
+  mixes, denormals, aliasing) and pick the rule that matches all of them.
 
 ## vint (mvint)
 Files: `src/model/vint.c` (element arithmetic, compares, shifts, logicals, splats, mfvscr/mtvscr), `vperm.c` (merge, pack,

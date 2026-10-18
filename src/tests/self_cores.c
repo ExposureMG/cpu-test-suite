@@ -72,11 +72,18 @@ static void emit(xts_ctx_t *ctx, int status, const char *metric, double v, const
   xts_emit(ctx, &r);
 }
 
-static void skip(xts_ctx_t *ctx, const char *why)
+/* skip record with the same metric/unit the case emits on hardware, so host and console key sets match */
+static void skip(xts_ctx_t *ctx, const char *why, const char *metric, const char *unit)
 {
   char det[128];
   snprintf(det, sizeof det, "{\"why\":\"%s\"}", why);
-  xts_emit_status(ctx, XTS_ST_SKIP, det);
+  xts_record_t r;
+  xts_record_init(&r);
+  r.metric = metric;
+  r.unit = unit;
+  r.status = XTS_ST_SKIP;
+  r.detail = det;
+  xts_emit(ctx, &r);
 }
 
 static int cores_run(const xts_case_t *c, xts_ctx_t *ctx)
@@ -89,7 +96,7 @@ static int cores_run(const xts_case_t *c, xts_ctx_t *ctx)
   xj_obj(&j);
   switch ((int)c->arg[0]) {
   case C_ROLES: {
-    if (ctx->host) { skip(ctx, "host: no hardware threads"); return 0; }
+    if (ctx->host) { skip(ctx, "host: no hardware threads", "result", ""); return 0; }
     uint64_t remote = 99, here = xts_mfspr64(1023);
     xts_core_xc_call(pir_job, &remote, NULL);
     xj_kv_uint(&j, "suite_pir", here);
@@ -131,7 +138,7 @@ static int cores_run(const xts_case_t *c, xts_ctx_t *ctx)
     return 0;
   }
   case C_HB: {
-    if (ctx->host) { skip(ctx, "host: no hardware threads"); return 0; }
+    if (ctx->host) { skip(ctx, "host: no hardware threads", "result", ""); return 0; }
     static const int pirs[3] = { XTS_PIR_TEST, XTS_PIR_SUITE, XTS_PIR_NET };
     uint64_t a[3], b[3];
     for (int i = 0; i < 3; i++) a[i] = xts_xc_heartbeat(pirs[i]);
@@ -154,7 +161,7 @@ static int cores_run(const xts_case_t *c, xts_ctx_t *ctx)
     return 0;
   }
   case C_SYNC: {
-    if (ctx->host) { skip(ctx, "host: generated code does not execute on the PC"); return 0; }
+    if (ctx->host) { skip(ctx, "host: generated code does not execute on the PC", "count", "count"); return 0; }
     int bad = 0, first_bad = -1;
     for (int k = 0; k < SYNCS; k++) {
       uint32_t want = (uint32_t)(k * 37 + 1) & 0x7FFF, got = 0xFFFFFFFFu;
