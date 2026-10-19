@@ -22,7 +22,8 @@ Rules:
     * status filter: pass, nonlinear (repeatable, but the cost per unit depends on the depth: the value is the
       least-squares average, fit.marginal_cycles has the steps), regressed (timing gate passed, only the JSON baseline
       disagrees) and info (kept, flagged: e.g. front-end bound = upper bound) by default; --include-noisy adds noisy;
-      --statuses sets the list explicitly.
+      --statuses sets the list explicitly. A noisy measurement that at least two runs reproduce within --repeat-tol
+      (default 2 %) of their median is accepted too and tagged repeatable_noisy (coverage.noisy_promoted counts them).
     * condition sections: "default" = every axis at its default value (values[0] of src/conds), except the axes a family
       measures along (ldst.lat: cache, data_align; lat.data: vscr_nj; calib: speed), which become keys inside the model.
       Every other condition vector gets its own section under "conditions", and ratios against default under
@@ -180,7 +181,8 @@ def is_smt_info(r):
 
 
 class Rec(object):
-    __slots__ = ("tag", "run", "family", "case", "mnem", "metric", "value", "unit", "status", "det", "cond", "label", "ok")
+    __slots__ = ("tag", "run", "family", "case", "mnem", "metric", "value", "unit", "status", "det", "cond", "label", "ok",
+                 "rep")
 
 
 # ----------------------------------------------------------------------------------------------------------- loading
@@ -299,8 +301,34 @@ def normalise(raw, defaults, accept):
         nd = sorted("%s=%s" % (k, v) for k, v in r.cond.items() if k not in dims and v != defaults.get(k, v))
         r.label = ";".join(nd) if nd else "default"
         r.ok = r.status in accept
+        r.rep = False
         out.append(r)
     return out
+
+
+def promote_repeatable(recs, tol):
+    """noisy records of one measurement (family, case, metric, mnem, condition label) from at least two runs that agree
+    within tol of their median are accepted and tagged (r.rep): the gate flagged each run, but the value repeats. Returns
+    the number of records promoted."""
+    if not tol or tol <= 0:
+        return 0
+    groups = defaultdict(list)
+    for r in recs:
+        if r.status == "noisy" and not r.ok and r.value is not None:
+            groups[(r.tag, r.family, r.case, r.metric, r.mnem, r.label)].append(r)
+    n = 0
+    for g in groups.values():
+        runs = set(r.run for r in g)
+        if len(runs) < 2:
+            continue
+        vs = [r.value for r in g]
+        med = statistics.median(vs)
+        if med == 0 or (max(vs) - min(vs)) > tol * abs(med):
+            continue
+        for r in g:
+            r.ok, r.rep = True, True
+            n += 1
+    return n
 
 
 # ----------------------------------------------------------------------------------------------------------- aggregation
@@ -316,10 +344,12 @@ class Ctx(object):
 def agg(recs, ctx=None, vals=None, where=None):
     """recs: accepted records; vals: optional parallel values (default r.value). None when nothing numeric."""
     items = []
+    rep = False
     for i, r in enumerate(recs):
         v = vals[i] if vals is not None else r.value
         if v is not None:
             items.append((v, r.tag, r.run))
+            rep = rep or bool(getattr(r, "rep", False))
     if not items:
         return None
     vs = [x[0] for x in items]
@@ -333,6 +363,8 @@ def agg(recs, ctx=None, vals=None, where=None):
         out["console_spread"] = rnd(max(bc.values()) - min(bc.values()))
     if out["runs"] == 1:
         out["single_source"] = True
+    if rep:
+        out["repeatable_noisy"] = True      # some inputs were noisy runs accepted because the runs agree (promote_repeatable)
     if ctx is not None and ctx.count:
         ctx.values += 1
         if out["runs"] == 1:
@@ -379,7 +411,7 @@ class Builder(object):
                                    "pipelined": [], "issue": defaultdict(list), "U": [], "mc": [], "nb": [], "unpip": [],
                                    "bdi": [], "bins": defaultdict(list), "binc": defaultdict(list), "load": defaultdict(list),
                                    "use": [], "ltp": defaultdict(list), "stp": defaultdict(list), "mis": defaultdict(list),
-                                   "other": defaultdict(list), "ucode_refused": None}
+                                   "other": defaultdict(list), "ucode_refused": None, "strc": defaultdict(list)}
         if not e["mnem"] and mnem:
             e["mnem"] = mnem
         return e
@@ -548,6 +580,10 @@ class Builder(object):
     def f_sysops(self, r):
         c, sub = split_case(r.case)
         self.L[("sysops", c, sub, r.metric)].append(r)
+        if c.startswith("str.") and r.metric == "issue_cost" and r.mnem:   # string / multiple: cost per byte count
+            nb = r.det.get("bytes") or size_of(sub[1:]) if sub.startswith("n") else r.det.get("bytes")
+            if nb:
+                self.ins(r.mnem, r.mnem)["strc"][int(nb)].append(r)
         if r.mnem and r.metric in ("latency", "rthroughput", "issue_cost"):
             self.ins(r.mnem, r.mnem)["other"]["sysops:%s/%s:%s" % (c, sub, r.metric)].append(r)
 
@@ -800,6 +836,12 @@ class Builder(object):
             for src in ("ucode", "issue.pair", "lat.data"):
                 if e["issue"].get(src):
                     iss[src] = self.a(e["issue"][src], "%s issue_cost %s" % (v, src))
+            if e["strc"]:                     # sysops str.*: issue cost per byte count; the smallest count is the issue cost
+                byb = OrderedDict((str(nb), self.a(e["strc"][nb], "%s issue_cost %d bytes" % (v, nb))) for nb in sorted(e["strc"]))
+                o["issue_cost_by_bytes"] = byb
+                first = next((a for a in byb.values() if val(a) is not None), None)
+                if first is not None:
+                    iss["sysops.string"] = first
             o["issue_cost_by_source"] = iss
             o["issue_cost"] = next((val(a) for a in iss.values() if val(a) is not None), None)
             U = self.a(e["U"], "%s ucode extra" % v)
@@ -1504,15 +1546,18 @@ def coverage(recs, model, isa, ctx):
 
 
 def run(inputs, out, allow_host=False, consoles=None, statuses=None, include_noisy=False, td=False, llvm=None, isa_path=None,
-        log=None, quiet=False):
+        log=None, quiet=False, repeat_tol=0.02):
     log = log or (lambda m: print(m, file=sys.stderr))
     accept = tuple(statuses or DEFAULT_STATUSES) + (("noisy",) if include_noisy else ())
     raw, prov = load_inputs(inputs, allow_host, consoles, log)
     defaults = axis_defaults()
     isa = load_isa(isa_path or os.path.join(ROOT, "isa", "xenon_isa.json"))
     recs = normalise(raw, defaults, accept)
+    promoted = promote_repeatable(recs, repeat_tol) if "noisy" not in accept else 0
     model, conds, effects, smt, cons, ctx, by_label = build_all(recs, prov, isa)
     cov = coverage(recs, model, isa, ctx)
+    cov["noisy_promoted"] = promoted
+    cov["repeat_tol"] = repeat_tol
     os.makedirs(out, exist_ok=True)
     insts = model["instructions"]
     amap, ppc = None, None
@@ -1896,6 +1941,29 @@ def selftest():
         code3, doc3 = run([usb], os.path.join(tmp, "out3"), consoles=["falcon-B"], quiet=True, log=lambda m: None)
         check(doc3["model"]["instructions"]["addx"]["latency"]["RA"]["value"] == 2.21 and not doc3["consoles"], "console filter")
         # merged.jsonl input (as xts_merge writes it)
+        # string / multiple ops from sysops str.*: per byte count, the smallest count is the issue cost
+        sdir = os.path.join(tmp, "strops")
+        _write_run(sdir, "jasper-A", "0004", [_rec(1, "sysops", "str.lswi/n4", "issue_cost", 6.0, mnem="lswi", detail={"bytes": 4}),
+                                              _rec(2, "sysops", "str.lswi/n32", "issue_cost", 20.0, mnem="lswi", detail={"bytes": 32})],
+                   ident=ia)
+        code7, doc7 = run([sdir], os.path.join(tmp, "out7"), quiet=True, log=lambda m: None)
+        L7 = ((doc7.get("model") or {}).get("instructions") or {}).get("lswi") or {}
+        check(L7.get("issue_cost") == 6.0 and set((L7.get("issue_cost_by_bytes") or {}).keys()) == {"4", "32"},
+              "string op issue cost by byte count (smallest count = issue cost)")
+        # repeatable noisy: two runs that agree (stwx 2.90 / 2.93) are accepted and tagged; stb disagrees (2.9 / 3.5)
+        rdir = os.path.join(tmp, "repeat")
+        for rid, sv, bv in (("0002", 2.90, 2.9), ("0003", 2.93, 3.5)):
+            _write_run(rdir, "jasper-A", rid, [_rec(1, "ucode", "stwx", "issue_cost", sv, status="noisy", mnem="stwx"),
+                                               _rec(2, "ucode", "stb", "issue_cost", bv, status="noisy", mnem="stb")], ident=ia)
+        code5, doc5 = run([rdir], os.path.join(tmp, "out5"), quiet=True, log=lambda m: None)
+        I5 = doc5["model"]["instructions"]
+        sw = (I5.get("stwx") or {}).get("issue_cost_by_source", {}).get("ucode") or {}
+        check(sw.get("repeatable_noisy") is True and abs((sw.get("value") or 0) - 2.915) < 1e-6 and
+              (I5.get("stb") or {}).get("issue_cost") is None and doc5["coverage"]["noisy_promoted"] == 2,
+              "repeatable noisy values accepted and tagged, disagreeing ones not")
+        code6, doc6 = run([rdir], os.path.join(tmp, "out6"), quiet=True, log=lambda m: None, repeat_tol=0)
+        check(((doc6.get("model") or {}).get("instructions") or {}).get("stwx", {}).get("issue_cost") is None and
+              doc6["coverage"]["noisy_promoted"] == 0, "--repeat-tol 0 turns it off")
         mdir = os.path.join(tmp, "merged")
         mc, _ = XM.merge([usb], mdir, False, log=lambda m: None)
         code4, doc4 = run([mdir], os.path.join(tmp, "out4"), quiet=True, log=lambda m: None)
@@ -1928,6 +1996,9 @@ def main(argv=None):
     ap.add_argument("-o", "--out", default="schedmodel", help="output directory (default: schedmodel)")
     ap.add_argument("--console", action="append", help="only this console_tag (repeatable)")
     ap.add_argument("--include-noisy", action="store_true", help="also use records with status noisy")
+    ap.add_argument("--repeat-tol", type=float, default=0.02,
+                    help="accept noisy records of one measurement when >= 2 runs agree within this fraction of their median "
+                         "(tagged repeatable_noisy; default 0.02, 0 = off)")
     ap.add_argument("--statuses", help="comma list of accepted statuses (default: %s)" % ",".join(DEFAULT_STATUSES))
     ap.add_argument("--allow-host", action="store_true", help="accept host dry-run output (it has no measurements)")
     ap.add_argument("--td", action="store_true", help="also write PPCScheduleXenon.td (LLVM SchedMachineModel sketch)")
@@ -1942,7 +2013,7 @@ def main(argv=None):
         ap.error("no inputs")
     try:
         code, _ = run(a.inputs, a.out, a.allow_host, a.console, a.statuses.split(",") if a.statuses else None, a.include_noisy,
-                      a.td, a.llvm, a.isa, quiet=a.quiet)
+                      a.td, a.llvm, a.isa, quiet=a.quiet, repeat_tol=a.repeat_tol)
     except OSError as e:
         print("error: %s" % e, file=sys.stderr)
         return 1

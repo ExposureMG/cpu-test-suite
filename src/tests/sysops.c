@@ -19,6 +19,10 @@
  *   rc.<op>          Rc=1 vs Rc=0: latency and throughput, extra cost
  *   rc.andi          andi. / andis. investigation
  *   ca.chain         adde / addze / subfe / addc carry chains, carry-only dependency
+ *   str.<op>         string / multiple loads and stores: issue cost per instruction for several byte counts (n<bytes>).
+ *                    RA = r20 (scratch), RB = r21 = 0, lswx/stswx take the count from XER[25:31]. lswi/lswx load r3 up,
+ *                    stswi/stswx/stmw store from r3 / r<32-regs> up (reading the frame's r27-r30 is harmless); lmw can
+ *                    only load r31 - every lmw ends at r31, and r27-r30 hold the timing frame and the OUT pointer.
  *
  * Metric names (shared timing convention): latency, rthroughput, issue_cost, penalty, extra, overlap, cycles. Detail
  * carries producer / consumer / variant. Units are cycles unless a record says otherwise (conversion uses
@@ -50,6 +54,7 @@ typedef struct gen {
   int nfpr; struct { int r; uint64_t v; } fpr[4];
   int nvz; int vz[8];
   int has_cr; uint32_t cr;
+  int has_xer; uint64_t xer;                      /* lswx/stswx byte count */
 } gen_t;
 
 static void g_init(gen_t *g) { memset(g, 0, sizeof *g); }
@@ -78,6 +83,7 @@ static void g_ptr(gen_t *g, int r, int off) { if (g->nptr < 4) { g->ptr[g->nptr]
 static void g_fpr(gen_t *g, int r, uint64_t v) { if (g->nfpr < 4) { g->fpr[g->nfpr].r = r; g->fpr[g->nfpr++].v = v; } }
 static void g_vz(gen_t *g, int r) { if (g->nvz < 8) g->vz[g->nvz++] = r; }
 static void g_cr(gen_t *g, uint32_t cr) { g->has_cr = 1; g->cr = cr; }
+static void g_xer(gen_t *g, uint64_t xer) { g->has_xer = 1; g->xer = xer; }
 
 static void emit_unit(xts_kbuf_t *k, const gen_t *g, int j)
 {
@@ -104,6 +110,7 @@ static int gen_setup(xts_exec_t *x, void *arg)
   for (int i = 0; i < g->nfpr; i++) xts_set_fpr(x, g->fpr[i].r, g->fpr[i].v);
   for (int i = 0; i < g->nvz; i++) xts_set_vr(x, g->vz[i], xts_vr4(0, 0, 0, 0));
   if (g->has_cr) xts_set_cr(x, g->cr);
+  if (g->has_xer) xts_set_xer(x, g->xer);
   return 0;
 }
 
@@ -741,6 +748,42 @@ static int h_ca(xts_ctx_t *ctx, const ent_t *e)
   return 0;
 }
 
+/* ---- string / multiple: lmw stmw lswi stswi lswx stswx ---------------------------------------------------------------- */
+enum { STR_LMW, STR_STMW, STR_LSWI, STR_STSWI, STR_LSWX, STR_STSWX };
+static int h_string(xts_ctx_t *ctx, const ent_t *e)
+{
+  static const int insn[] = { XI_lmw, XI_stmw, XI_lswi, XI_stswi, XI_lswx, XI_stswx };
+  static const char *const nm[] = { "lmw", "stmw", "lswi", "stswi", "lswx", "stswx" };
+  static const int mw_regs[] = { 1, 4, 8, 18 };                   /* stmw: r31, r28, r24, r14 up to r31 */
+  static const int str_bytes[] = { 4, 8, 16, 32 };                /* lswi/stswi/lswx/stswx: 1, 2, 4, 8 registers */
+  int op = e->a, nv = op == STR_LMW ? 1 : 4;
+  for (int v = 0; v < nv; v++) {
+    int regs = op == STR_STMW ? mw_regs[v] : op == STR_LMW ? 1 : str_bytes[v] / 4;
+    int bytes = op == STR_STMW || op == STR_LMW ? 4 * regs : str_bytes[v];
+    gen_t *g = &G[v];
+    g_init(g);
+    g_ptr(g, 20, 0);
+    switch (op) {
+    case STR_LMW: GA(g, XI_lmw, 0, 31, 0, 20); break;
+    case STR_STMW: GA(g, XI_stmw, 0, 32 - regs, 0, 20); break;
+    case STR_LSWI: GA(g, XI_lswi, 0, 3, 20, bytes & 31); break;    /* NB = 0 encodes 32 bytes */
+    case STR_STSWI: GA(g, XI_stswi, 0, 3, 20, bytes & 31); break;
+    case STR_LSWX: GA(g, XI_lswx, 0, 3, 20, 21); g_gpr(g, 21, 0); g_xer(g, (uint64_t)bytes); break;
+    default: GA(g, XI_stswx, 0, 3, 20, 21); g_gpr(g, 21, 0); g_xer(g, (uint64_t)bytes); break;
+    }
+    char unit[48], sub[8], var[40];
+    snprintf(unit, sizeof unit, "%s, %d bytes", nm[op], bytes);
+    snprintf(sub, sizeof sub, "n%d", bytes);
+    snprintf(var, sizeof var, "%d_bytes_%d_registers", bytes, regs);
+    run_gen(&M[v], ctx, g, unit, 4.0 + 2.0 * regs);
+    tmeta_t t = TM(nm[op], NULL, var);
+    t.xkey = "bytes";
+    t.xval = bytes;
+    emit_meas(ctx, sub, "issue_cost", insn[op], gword(g, 0), &M[v], &t);
+  }
+  return 0;
+}
+
 /* ---- case table --------------------------------------------------------------------------------------------------------- */
 static const ent_t ents[] = {
   { "cmp.L0", h_compare, XI_cmp, 0 }, { "cmp.L1", h_compare, XI_cmp, 1 },
@@ -766,6 +809,8 @@ static const ent_t ents[] = {
   { "rc.mullwx", h_rc, 12, 0 }, { "rc.addcx", h_rc, 13, 0 },
   { "rc.andi", h_andi, 0, 0 },
   { "ca.chain", h_ca, 0, 0 },
+  { "str.lmw", h_string, STR_LMW, 0 }, { "str.stmw", h_string, STR_STMW, 0 }, { "str.lswi", h_string, STR_LSWI, 0 },
+  { "str.stswi", h_string, STR_STSWI, 0 }, { "str.lswx", h_string, STR_LSWX, 0 }, { "str.stswx", h_string, STR_STSWX, 0 },
 };
 #define NENTS ((int)(sizeof ents / sizeof ents[0]))
 
