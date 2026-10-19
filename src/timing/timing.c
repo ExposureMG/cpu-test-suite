@@ -87,9 +87,14 @@ int xts_time_measure(const xts_tspec_t *s, xts_ctx_t *ctx, xts_tresult_t *r)
     return 0;
   }
   r->ok = 1;
-  double first0 = NAN, last0 = NAN;
-  for (int i = 0; i <= nruns; i++) {
-    int d = i < nruns ? order[i] : 0;                 /* the extra last run: A/B/A check of the first depth */
+  /* run -1: warm-up of depths[0], not recorded (cold data, TLB and predictors made the first run of a series slow).
+   * runs nruns .. nruns+XTS_ABA_RUNS-1: the A/B/A re-runs of depths[0]. A/B/A compares MINIMA (the re-runs against
+   * depths[0]'s repeats): a one-off event only adds time, a regime shift moves the minimum too. */
+  double aba[XTS_ABA_RUNS];
+  int naba = 0;
+  for (int i = -1; i < nruns + XTS_ABA_RUNS; i++) {
+    int d = i >= 0 && i < nruns ? order[i] : 0;
+    int run = i < 0 ? 0 : i < nruns ? i : nruns;      /* setup2's run index: the A/B/A re-runs are run nruns */
     if (xts_time_build(s, s->depths[d], shared_k) < 0) {
       snprintf(r->why, sizeof r->why, "kernel build (depth %d): %s", s->depths[d], shared_k->errmsg);
       r->ok = 0;
@@ -97,7 +102,7 @@ int xts_time_measure(const xts_tspec_t *s, xts_ctx_t *ctx, xts_tresult_t *r)
     }
     if ((int)shared_k->n > r->kernel_words_max) r->kernel_words_max = (int)shared_k->n;
     xts_case_init(&x);
-    if (do_setup(s, &x, s->depths[d], i) < 0) { snprintf(r->why, sizeof r->why, "setup() failed"); r->ok = 0; return -1; }
+    if (do_setup(s, &x, s->depths[d], run) < 0) { snprintf(r->why, sizeof r->why, "setup() failed"); r->ok = 0; return -1; }
     x.in.gpr[R_ITERS] = s->iters;
     int st = xts_exec_kernel(&x, shared_k);
     r->nruns++;
@@ -111,11 +116,8 @@ int xts_time_measure(const xts_tspec_t *s, xts_ctx_t *ctx, xts_tresult_t *r)
     }
     double ticks = (double)(uint32_t)(x.out.gpr[R_T1] - x.out.gpr[R_T0]);
     double y = ticks / (double)s->iters;
-    if (d == 0) {
-      if (isnan(first0)) first0 = y;
-      last0 = y;
-    }
-    if (i < nruns) vals[d][cnt[d]++] = y;
+    if (i >= 0 && i < nruns) vals[d][cnt[d]++] = y;
+    else if (i >= nruns) aba[naba++] = y;
   }
   double xs[XTS_TMAX_DEPTHS], ys[XTS_TMAX_DEPTHS];
   for (int d = 0; d < nd; d++) {
@@ -125,7 +127,13 @@ int xts_time_measure(const xts_tspec_t *s, xts_ctx_t *ctx, xts_tresult_t *r)
     xs[d] = s->depths[d];
     ys[d] = r->median[d];
   }
+  double first0 = r->minv[0], last0 = xts_min(aba, naba);
   r->aba_shift = first0 != 0 ? (last0 - first0) / first0 : 0;
+  double sl = s->spread_limit > 0 ? s->spread_limit : 0.02;
+  r->outliers = 0;                                    /* diagnostics: repeats more than the spread limit above their median */
+  for (int d = 0; d < nd; d++)
+    for (int k = 0; k < cnt[d]; k++)
+      if (vals[d][k] > r->median[d] * (1 + sl)) r->outliers++;
   if (xts_fit_line(xs, ys, nd, &r->fit) < 0) { snprintf(r->why, sizeof r->why, "degenerate depths"); r->ok = 0; return -1; }
   xts_time_gate(s, r);
   r->failed = 0;
@@ -180,6 +188,7 @@ void xts_time_fit_json(xts_json_t *j, const char *key, const xts_tspec_t *s, con
   xj_kv_double(j, "aba_shift", ok ? r->aba_shift : NAN);
   xj_kv_double(j, "slope_se", ok ? r->slope_se : NAN);
   xj_kv_double(j, "resid_over_noise", ok ? r->resid_over_noise : NAN);
+  xj_kv_int(j, "outliers", ok ? r->outliers : -1);
   xj_key(j, "depths");
   xj_arr(j);
   for (int d = 0; d < nd; d++) xj_int(j, s->depths[d]);

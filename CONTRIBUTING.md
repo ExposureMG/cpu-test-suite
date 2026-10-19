@@ -263,7 +263,7 @@ measurement has none; families that keep several fits in one record add them wit
 | `unit`, `iters`, `status`, `why` | spec unit text, loop count, status of this fit, reason (only when non-empty) |
 | `cpu` | cycles per spec unit = `slope_ticks * cycles_per_tick` (NOT divided by `per_unit`) |
 | `slope_ticks`, `intercept_ticks`, `r2`, `max_resid_rel` | least-squares fit of ticks/iteration against depth |
-| `spread`, `aba_shift` | largest MAD/median over the depths; first-depth A/B/A drift |
+| `spread`, `aba_shift`, `outliers` | largest MAD/median over the depths; first-depth A/B/A drift (min of 3 re-runs at the end vs min of its repeats; one unrecorded warm-up run precedes the series); repeats more than the spread limit above their median |
 | `slope_se` | standard error of the slope in ticks (`sqrt(SSR/(n-2)/Sxx)`); `r.err_cycles` is the sched error bar |
 | `depths`, `ticks_med`, `ticks_mad` | depth list; ticks/iteration median and MAD per depth |
 | `cycles_per_tick`, `per_unit`, `kernel_words_max` | scale used, events per spec unit, largest kernel |
@@ -278,8 +278,8 @@ bdnz top ; mftb r28`) or `.loop = XTS_LOOP_GPR` (`isync ; mftb r27 ; top: body ;
 bne crF,top ; mftb r28`, `crF = .loop_crf` 1..7, default cr7): bodies that use CTR (mtctr/bctr/bdnz, CTR-saving units)
 need no r26 save any more. Both close with a long-reach form when the body is beyond the bc range (`bdz/beq out ; b top`).
 `xk_loop_close(k, top, mode, count_reg, crf)` is the same closure for hand-built loops.
-`.setup2(x, depth, run, arg)` replaces `.setup` when set: `run` is the run index (0 .. ndepths*repeats, the last one is the
-A/B/A re-run; on the host the depth index).
+`.setup2(x, depth, run, arg)` replaces `.setup` when set: `run` is the run index (0 .. ndepths*repeats; the warm-up run
+uses 0 and the A/B/A re-runs all use ndepths*repeats; on the host the depth index).
 
 ## Vocabularies (checked in host builds)
 - metric: `latency rthroughput issue_cost penalty extra overlap cycles ratio bytes_per_cycle depth count result estimate

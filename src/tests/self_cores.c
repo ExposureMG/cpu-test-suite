@@ -18,6 +18,10 @@
  *                stale (127,840 of 128,000 words) - a line xdcbt FETCHES into a core's L1 is not invalidated by
  *                another core's stores and dcbf. An xdcbt on a line already in L1 changes nothing (also 0).
  *                c2t_xdcbt_staged 0: the reader's own dcbf removes the line.
+ *   irq_ee<0|1>  on the test core, 200 timed runs of a fixed ~0.4 ms bdnz loop with external interrupts enabled (ee1,
+ *                as every measurement runs today) and masked (ee0, MSR[EE] = 0 for the probe only): how many runs carry
+ *                extra time and how much (info). The sched run showed a ~5,300-cycle event roughly every 1.4 ms on the
+ *                test core; if ee0 has no outliers and ee1 has, it is an interrupt.
  *   smt_exit_p<n> a busy_int load on PIR 1/3/5 starts, its heartbeat advances, it stops through xts_smt_exit and the exit
  *                self-check (smt_entry.S: SPRG2 == table == TCB self word, PIR) passed (exit_why ok)
  * A lost test core never returns from xts_core_xc_call (the core reports the crash/hang and halts). Host: roles,
@@ -36,7 +40,9 @@
 #define SYNCS 1000
 #define DSYNC_WORDS 128                        /* 512 bytes: XTS_SCRATCH_BYTES, 4 cache lines */
 
-enum { C_ROLES, C_PING, C_HB, C_SYNC, C_SMT, C_DSYNC };
+enum { C_ROLES, C_PING, C_HB, C_SYNC, C_SMT, C_DSYNC, C_IRQ };
+#define IRQ_RUNS 200
+#define IRQ_LOOP 400000u                       /* bdnz iterations per run: ~0.4 ms */
 enum { D_C2T_READ, D_C2T_STORE, D_C2T_STAGED, D_C2T_XDCBT, D_C2T_XDCBT_STAGED, D_T2C_PLAIN, D_T2C_STAGED, D_N };
 static const char *const dsync_names[D_N] = { "c2t_read", "c2t_store", "c2t_staged", "c2t_xdcbt", "c2t_xdcbt_staged",
                                               "t2c_plain", "t2c_staged" };
@@ -56,6 +62,12 @@ static int cores_enum(xts_caselist_t *cl)
     if (!c) return -1;
     c->arg[0] = C_DSYNC;
     c->arg[1] = i;
+  }
+  for (int ee = 1; ee >= 0; ee--) {
+    xts_case_t *c = xts_case_addf(cl, "irq_ee%d", ee);
+    if (!c) return -1;
+    c->arg[0] = C_IRQ;
+    c->arg[1] = ee;
   }
   static const int pirs[] = { 1, 3, 5 };
   for (int i = 0; i < 3; i++) {
@@ -122,6 +134,27 @@ static void dsync_t2c_job(void *a, void *b)
   (void)b;
   for (uint32_t i = 0; i < DSYNC_WORDS; i++) ((volatile uint32_t *)dbuf)[i] = dpat(j->round, i);
   __sync_synchronize();
+}
+
+/* irq probe: runs on the test core inside the measurement fence */
+static uint32_t irq_dt[IRQ_RUNS];
+static void irq_job(void *a, void *b)
+{
+  int mask = !(int)(uintptr_t)a;
+  (void)b;
+#if defined(__powerpc__) || defined(__PPC__)
+  uint64_t msr;
+  asm volatile("mfmsr %0" : "=r"(msr));
+  if (mask) asm volatile("mtmsrd %0, 1" : : "r"(msr & ~0x8000ull) : "memory");   /* EE off (L=1: EE and RI only) */
+  for (int k = 0; k < IRQ_RUNS; k++) {
+    uint64_t t0 = xts_tb();
+    asm volatile("mtctr %0\n1:\tbdnz 1b" : : "r"(IRQ_LOOP) : "ctr");
+    irq_dt[k] = (uint32_t)(xts_tb() - t0);
+  }
+  if (mask) asm volatile("mtmsrd %0, 1" : : "r"(msr) : "memory");
+#else
+  (void)mask;
+#endif
 }
 
 static int cmp_u32(const void *a, const void *b)
@@ -299,6 +332,32 @@ static int cores_run(const xts_case_t *c, xts_ctx_t *ctx)
     xj_kv_bool(&j, "must_be_zero", must_pass);
     xj_end(&j);
     emit(ctx, must_pass ? (bad ? XTS_ST_FAIL : XTS_ST_PASS) : XTS_ST_INFO, "count", bad, "count", &j);
+    return 0;
+  }
+  case C_IRQ: {
+    int ee = (int)c->arg[1];
+    if (ctx->host) { skip(ctx, "host: no test core", "count", "count"); return 0; }
+    static uint32_t srt[IRQ_RUNS];
+    xts_core_xc_call(irq_job, (void *)(uintptr_t)ee, NULL);
+    __sync_synchronize();
+    memcpy(srt, irq_dt, sizeof srt);
+    qsort(srt, IRQ_RUNS, sizeof srt[0], cmp_u32);
+    uint32_t mn = srt[0], med = srt[IRQ_RUNS / 2], thr = mn + 8;   /* 8 ticks = 512 cycles above the fastest run */
+    int out = 0;
+    uint64_t extra = 0;
+    for (int k = 0; k < IRQ_RUNS; k++)
+      if (irq_dt[k] > thr) { out++; extra += irq_dt[k] - mn; }
+    xj_kv_int(&j, "ee", ee);
+    xj_kv_int(&j, "runs", IRQ_RUNS);
+    xj_kv_uint(&j, "loop_iters", IRQ_LOOP);
+    xj_kv_uint(&j, "min_ticks", mn);
+    xj_kv_uint(&j, "median_ticks", med);
+    xj_kv_uint(&j, "max_ticks", srt[IRQ_RUNS - 1]);
+    xj_kv_int(&j, "outlier_runs", out);
+    xj_kv_double(&j, "outlier_mean_extra_ticks", out ? (double)extra / out : 0);
+    xj_kv_double(&j, "outliers_per_ms", out * (double)xts_tb_hz() / ((double)med * IRQ_RUNS * 1000.0));
+    xj_end(&j);
+    emit(ctx, XTS_ST_INFO, "count", out, "count", &j);
     return 0;
   }
   case C_SMT: {
