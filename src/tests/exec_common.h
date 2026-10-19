@@ -82,13 +82,11 @@ XE_S uint64_t xe_fp_value(xts_rng_t *r)
   if (m < 9) return xe_pick64(r, xe_fp64, XE_N(xe_fp64));
   if (m < 13) return xe_widen32(xe_pick32(r, xe_fp32, XE_N(xe_fp32)));
   if (m < 15) return xts_rng_next(r);
-  if (m < 18) {      /* sign, exponent within +-10 of 1.0, random mantissa */
-    return ((uint64_t)xts_rng_below(r, 2) << 63) | ((uint64_t)(1023 + (int)xts_rng_below(r, 21) - 10) << 52) |
-           (xts_rng_next(r) & 0xFFFFFFFFFFFFFull);
-  }
-  /* denormal / max-exponent with a random mantissa */
-  return ((uint64_t)xts_rng_below(r, 2) << 63) | ((uint64_t)(xts_rng_below(r, 2) ? 0x7FF : 0) << 52) |
-         (xts_rng_next(r) & 0xFFFFFFFFFFFFFull);
+  /* draws in sequence (sign, exponent, mantissa): one expression would leave their order to the compiler */
+  uint64_t s = xts_rng_below(r, 2), e;
+  if (m < 18) e = (uint64_t)(1023 + (int)xts_rng_below(r, 21) - 10);   /* exponent within +-10 of 1.0 */
+  else e = xts_rng_below(r, 2) ? 0x7FF : 0;                           /* denormal / max-exponent */
+  return (s << 63) | (e << 52) | (xts_rng_next(r) & 0xFFFFFFFFFFFFFull);
 }
 
 XE_S int xe_is_float_vec(const xts_insn_t *d)
@@ -119,7 +117,7 @@ XE_S xts_vr_t xe_vec_value(xts_rng_t *r, int floaty)
       for (int i = 0; i < 4; i++) w[i] = v * 0x01010101u;
     } else if (m < 84) {                                /* halfword splat / mix */
       static const uint16_t h[] = { 0, 1, 0x7FFF, 0x8000, 0xFFFF, 0x00FF, 0xFF00 };
-      for (int i = 0; i < 4; i++) w[i] = ((uint32_t)h[xts_rng_below(r, 7)] << 16) | h[xts_rng_below(r, 7)];
+      for (int i = 0; i < 4; i++) { uint32_t hi = h[xts_rng_below(r, 7)]; w[i] = (hi << 16) | h[xts_rng_below(r, 7)]; }
     } else for (int i = 0; i < 4; i++) w[i] = (uint32_t)xts_rng_next(r);
   }
   return xts_vr4(w[0], w[1], w[2], w[3]);

@@ -5,7 +5,8 @@
 #                                          tools/xts_recv.py, fit, encoder, model) + xts_recv.py --selftest
 #   make host-dryrun PROFILE=<p>           run profile <p> on the PC: every block/case, every kernel encoded + decoded back;
 #                                          the results travel as UDP to tools/xts_recv.py -> $(BUILD)/dryrun-<p>/run/
-#   make check [BUILD=...]                 check_encoder (vs xenon-as), check_model (vs results4), check_illegal, check_records
+#   make check [BUILD=...]                 check_draws (RNG draw order), check_encoder (vs xenon-as), check_model (vs results4),
+#                                          check_illegal, check_records
 #   make recv [OUT=xts-runs]               receive a console run (tools/xts_recv.py: listens on UDP 36360, writes
 #                                          OUT/<console_tag>/<run_nonce>/); RECV_ARGS="--keep-listening" for several runs
 #   make usb USB=/run/media/<you>/<stick>  copy the ELF to <stick>/xenon.elf (XeLL autoloads it) and unmount; nothing else
@@ -276,7 +277,13 @@ check-records: host-dryrun
 	$(PYTHON) -B tools/check_records.py $(BUILD)/dryrun-$(PROFILE)/run $(if $(KEYS),--keys-baseline $(KEYS)) \
 	  $(if $(filter smoke,$(PROFILE)),--max-records $(SMOKE_BUDGET))
 
-check: check-encoder check-model check-illegal check-records
+# every RNG draw in its own full expression: C leaves the order of call arguments / operands open, and host gcc evaluates
+# call arguments right to left where xenon-gcc goes left to right (the dry run would generate other case inputs)
+check-draws: $(GEN_HDRS)
+	$(PYTHON) -B tools/check_draws.py --selftest
+	$(PYTHON) -B tools/check_draws.py --gen $(GEN) $(HST_SRCS) $(wildcard profiles/*.c)
+
+check: check-draws check-encoder check-model check-illegal check-records
 
 usb: $(ELF32)
 	@test -n "$(USB)" || (echo "usage: make usb USB=/path/to/mounted/stick [PROFILE=...]" >&2; exit 1)
@@ -322,6 +329,6 @@ clean:
 	rm -rf $(BUILD)
 
 FORCE:
-.PHONY: all host-tools host-test host-dryrun serve kbootconf check-tftp recv check-recv check check-encoder check-model check-illegal check-records usb bootstrap clean FORCE
+.PHONY: all host-tools host-test host-dryrun serve kbootconf check-tftp recv check-recv check check-draws check-encoder check-model check-illegal check-records usb bootstrap clean FORCE
 
 -include $(shell find $(BUILD) -name '*.d' 2>/dev/null)
