@@ -23,8 +23,10 @@
  * Transmitter loop: one frame copy at a time - fence (xts_xc_fence_enter: never while the test core measures), hand the
  * copy to the NIC path (udp_sendto, or the own driver's descriptor), wait for it to be on the wire, leave the fence.
  * Copies of a frame are >= XTS_NET_COPY_GAP_US apart; frames are paced so that at most XTS_NET_FPS copies per second
- * leave on average. The transmitter never calls malloc or stdio (they belong to the suite thread); its only cached data
- * are its stack, a 1.4 KB staging buffer and a 1.5 KB frame buffer.
+ * leave on average. After the link was quiet for XTS_NET_WAKE_IDLE_MS (a measurement pause, the run start), the next
+ * XTS_NET_WAKE_MS go out at XTS_NET_WAKE_FPS only, so a receiver on Wi-Fi in power save wakes before the AP's buffer for
+ * it overflows (xts_net_pace_sent in src/core/netfmt.c). The transmitter never calls malloc or stdio (they belong to
+ * the suite thread); its only cached data are its stack, a 1.4 KB staging buffer and a 1.5 KB frame buffer.
  */
 #include <stdio.h>
 #include <string.h>
@@ -79,6 +81,20 @@ static int dhcp_ok;
 #ifndef XTS_NET_COPY_GAP_US
 #define XTS_NET_COPY_GAP_US 50
 #endif
+/* wake window (make NET_WAKE_MS= NET_WAKE_IDLE_MS= NET_WAKE_FPS=; NET_WAKE_MS=0 disables it): after XTS_NET_WAKE_IDLE_MS
+ * without a frame, XTS_NET_WAKE_MS at XTS_NET_WAKE_FPS copies per second. 200 copies/s put at most ~24 copies into the
+ * AP's power-save buffer before a dozing receiver wakes at the next beacon (~100 ms; on hardware 63 and 96 copies fitted
+ * and the receiver was awake again 70-120 ms after the burst began). 150 ms at 200 copies/s delays a CRUMB queued
+ * behind 16 RECs by ~170 ms, inside CRUMB_WAIT_US (src/core/main.c). */
+#ifndef XTS_NET_WAKE_MS
+#define XTS_NET_WAKE_MS 150
+#endif
+#ifndef XTS_NET_WAKE_IDLE_MS
+#define XTS_NET_WAKE_IDLE_MS 50
+#endif
+#ifndef XTS_NET_WAKE_FPS
+#define XTS_NET_WAKE_FPS 200
+#endif
 #ifndef XTS_NET_RING_BYTES
 #define XTS_NET_RING_BYTES (4u << 20)
 #endif
@@ -109,7 +125,7 @@ typedef struct netq {
   volatile uint32_t head, last_seq, pad0[30];          /* producer (suite) */
   volatile uint32_t tail, sent_seq, ready, pad1[29];   /* consumer (transmitter); ready: set by xts_net_init */
   volatile uint32_t frames_hi, frames_lo, copies_hi, copies_lo, bytes_hi, bytes_lo, send_failures, tx_timeouts,
-      fence_waits, fence_ticks_hi, fence_ticks_lo, fence_overrun, messages_sent, link_up, crash_reported, pad2[17];
+      fence_waits, fence_ticks_hi, fence_ticks_lo, fence_overrun, messages_sent, link_up, crash_reported, wakes, pad2[16];
 } netq_t;
 static netq_t *q;
 static volatile uint32_t *ring;                          /* uncached, XTS_NET_RING_BYTES */
@@ -487,13 +503,14 @@ void xts_net_stats(xts_net_stats_t *s)
   s->tx_timeouts = q->tx_timeouts;
   s->fence_waits = q->fence_waits;
   s->fence_wait_ticks = get64(&q->fence_ticks_hi, &q->fence_ticks_lo);
+  s->wake_windows = q->wakes;
   s->link_up = (int)q->link_up;
 }
 
 /* ---- transmitter (PIR 4) ---- */
 static uint32_t stage[XTS_NET_MAX_PAYLOAD / 4 + 2];      /* one fragment's payload (cached, aligned) */
 static uint8_t fbuf[XTS_NET_MAX_FRAME + 8] __attribute__((aligned(8)));
-static uint64_t t_next_frame_tb;
+static xts_net_pace_t t_pace;
 
 static int desc_free(int d) { return !(bswap(txd[d * 4 + 1]) & 0x80000000u); }
 
@@ -578,9 +595,11 @@ static int send_copy(const xts_net_hdr_t *h, volatile const uint32_t *ring_src)
 
 static void send_frame(const xts_net_hdr_t *h0, volatile const uint32_t *ring_src)
 {
-  uint64_t per_frame = xts_xc_us_ticks(1000000u / XTS_NET_FPS);
-  while (xts_xc_tb() < t_next_frame_tb) ;               /* pacing (bounded: at most COPIES frame periods) */
-  uint64_t start = xts_xc_tb(), last = 0;
+  const xts_net_pace_cfg_t pc = { xts_xc_us_ticks(1000000u / XTS_NET_FPS) * XTS_NET_COPIES,
+                                  xts_xc_us_ticks(1000000u / XTS_NET_WAKE_FPS) * XTS_NET_COPIES,
+                                  xts_xc_us_ticks(XTS_NET_WAKE_IDLE_MS * 1000u), xts_xc_us_ticks(XTS_NET_WAKE_MS * 1000u) };
+  while (xts_xc_tb() < t_pace.next) ;                   /* pacing (bounded: one frame period) */
+  uint64_t start = xts_xc_tb(), last = 0, first = start;
   for (int c = 0; c < XTS_NET_COPIES; c++) {
     xts_net_hdr_t h = *h0;
     h.copy = (uint8_t)c;
@@ -588,9 +607,12 @@ static void send_frame(const xts_net_hdr_t *h0, volatile const uint32_t *ring_sr
     if (c) while (xts_xc_tb() - last < xts_xc_us_ticks(XTS_NET_COPY_GAP_US)) ;
     last = xts_xc_tb();
     if (send_copy(&h, c ? NULL : ring_src) < 0) q->send_failures = q->send_failures + 1;
+    if (!c) first = xts_xc_tb();                         /* copy 0 left: after any measurement fence */
   }
   add64(&q->frames_hi, &q->frames_lo, 1);
-  t_next_frame_tb = start + per_frame * XTS_NET_COPIES;
+  uint64_t wakes = t_pace.wakes;
+  xts_net_pace_sent(&t_pace, &pc, start, first, xts_xc_tb());
+  if (t_pace.wakes != wakes) q->wakes = (uint32_t)t_pace.wakes;
 }
 
 /* the suite core crashed: nobody else will say so. Once the ring is drained, the transmitter becomes the producer

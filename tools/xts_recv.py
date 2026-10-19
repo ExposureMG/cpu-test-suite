@@ -26,6 +26,7 @@ running), unless the file already lists it. Rebuild the ELF afterwards (make), t
 Only the standard library is used.
 """
 import argparse
+import bisect
 import json
 import os
 import random
@@ -53,6 +54,7 @@ CSV_HEADER = "run_id,seq,family,case_id,mnem,word,cond,block,metric,value,unit,n
 CAP_MAGIC = b"XTSCAP1\n"
 FNV_INIT, FNV_PRIME = 0xcbf29ce484222325, 0x100000001b3
 LINGER = 1.0                                     # seconds to keep listening after a run's first END
+SO_RXQ_OVFL = getattr(socket, "SO_RXQ_OVFL", 40)  # Linux: datagrams the kernel dropped on this socket (full buffer)
 
 
 def fnv1a64(h, data):
@@ -152,6 +154,9 @@ class Run:
     def __init__(self, nonce, now):
         self.nonce = nonce
         self.frames = {}              # seq -> (msg, typ, idx, cnt)
+        self.arrival = {}             # seq -> time its first copy arrived
+        self.timed = True             # arrival times are real (not a --replay)
+        self.kernel_drops = None      # datagrams the PC's kernel dropped on the socket during the run (None: unknown)
         self.parts = {}               # msg -> {"typ", "cnt", "frags": {idx: bytes}}
         self.messages = {}            # msg -> (typ, bytes) complete
         self.received = self.duplicates = self.crc_errors = self.bad = self.late = 0
@@ -167,7 +172,7 @@ class Run:
         self.done_blocks = 0
         self.last_block = ""
 
-    def feed(self, h, data):
+    def feed(self, h, data, now=0.0):
         _, _, typ, _, _, _, seq, msg, idx, cnt, plen, _, _ = h
         self.received += 1
         if seq in self.frames:
@@ -177,6 +182,7 @@ class Run:
             self.bad += 1
             return
         self.frames[seq] = (msg, typ, idx, cnt)
+        self.arrival[seq] = now
         self.max_seq = max(self.max_seq, seq)
         if self.capture_file:
             self.capture_file.write(struct.pack(">I", len(data)) + data)
@@ -292,6 +298,7 @@ class Run:
             if counts[name] != want[name]:
                 mismatch[name] = [counts[name], want[name]]
         rec_hash = "%016x" % h
+        context = self.loss_context(ranges(missing)) if self.timed else None
         reasons = []
         if self.hello is None:
             reasons.append("no HELLO")
@@ -323,7 +330,8 @@ class Run:
             ("frames_received", self.received), ("frames_unique", len(self.frames)), ("duplicates", self.duplicates),
             ("crc_errors", self.crc_errors + extra_crc), ("bad_frames", self.bad), ("late_frames", self.late),
             ("missing_frames", len(missing)), ("missing_seq", ranges(missing)),
-            ("missing_in_end_range", len(missing_in_end)),
+            ("missing_in_end_range", len(missing_in_end)), ("missing_context", context),
+            ("kernel_drops", self.kernel_drops),
             ("incomplete_messages", incomplete),
             ("messages", OrderedDict((n, counts[n]) for n in TYPES.values() if counts[n])),
             ("end_messages", want), ("count_mismatch", mismatch),
@@ -380,6 +388,8 @@ class Run:
                                            "COMPLETE" if complete else "INCOMPLETE (" + "; ".join(reasons) + ")",
                                            status, len(records), len(self.frames), len(missing), self.duplicates,
                                            self.crc_errors + extra_crc, d)
+        if self.kernel_drops:
+            verdict += " | %d datagram(s) dropped by this PC's socket buffer" % self.kernel_drops
         if not quiet or not complete:
             print(verdict, flush=True)
         for kind, rep in reports:
@@ -390,6 +400,32 @@ class Run:
                     (" vector %s srr0 %s" % (rep.get("vector"), rep.get("srr0"))) if kind == "CRASH" else "",
                     (" timeout %s us" % rep.get("timeout_us")) if kind == "HANG" else ""), flush=True)
         return complete and status == "complete"
+
+    def loss_context(self, missing_ranges):
+        """per missing range (first 50): when the frames around it arrived, relative to the run's first frame, and the
+        longest silence in the second before it. Loss right after a silence of >= ~100 ms points at a receiver on Wi-Fi
+        in power save (its access point drops what it cannot buffer while the receiver dozes); loss with kernel_drops
+        > 0 at the PC's socket buffer."""
+        if not self.arrival:
+            return []
+        order = sorted(self.arrival.items(), key=lambda kv: kv[1])
+        times = [t for _, t in order]
+        t0 = times[0]
+        out = []
+        for lo, hi in missing_ranges[:50]:
+            before, after = self.arrival.get(lo - 1), self.arrival.get(hi + 1)
+            quiet = 0.0
+            if before is not None:
+                i = bisect.bisect_right(times, before)
+                j = bisect.bisect_left(times, before - 1.0)
+                for a, b in zip(times[j:i], times[j + 1:i]):
+                    quiet = max(quiet, b - a)
+            out.append(OrderedDict([
+                ("seq", [lo, hi]),
+                ("t_ms", None if before is None else round((before - t0) * 1e3, 1)),
+                ("hole_ms", None if before is None or after is None else round((after - before) * 1e3, 1)),
+                ("quiet_before_ms", round(quiet * 1e3, 1))]))
+        return out
 
     def quarantine_lines(self):
         out = []
@@ -414,6 +450,8 @@ class Receiver:
         self.bad_magic = 0
         self.results = []           # (nonce, ok)
         self.last_progress = 0
+        self.timed = True           # False for --replay: arrival times are not real
+        self.kernel_drops = None    # SO_RXQ_OVFL counter of the socket (None: not available)
 
     def datagram(self, data, now):
         if len(data) < 36 or data[:4] != MAGIC:
@@ -435,13 +473,15 @@ class Receiver:
             return
         if run is None:
             run = self.runs[nonce] = Run(nonce, now)
+            run.timed = self.timed
+            run.kdrops0 = self.kernel_drops
             if self.a.run_dir is None and not self.a.quiet:
                 print("xts_recv: new run %016x" % nonce, file=sys.stderr, flush=True)
         if run.finalized:
             run.late += 1
             return
         run.last = now
-        run.feed(h, data[:36 + plen])
+        run.feed(h, data[:36 + plen], now)
         if run.end is not None and run.end_time is None:
             run.end_time = now
 
@@ -459,6 +499,8 @@ class Receiver:
             sys.stderr.write("\n")
         extra = self.unattributed_crc
         self.unattributed_crc = 0
+        if self.kernel_drops is not None and getattr(run, "kdrops0", None) is not None:
+            run.kernel_drops = self.kernel_drops - run.kdrops0
         ok = run.finalize(self.a.out, self.a.run_dir, extra, self.a.quiet)
         self.results.append((run.nonce, ok))
         lines = run.quarantine_lines()
@@ -519,6 +561,25 @@ def open_socket(bind, port):
     return s
 
 
+def enable_drop_count(sock):
+    """ask the kernel to attach the socket's drop counter to received datagrams (Linux SO_RXQ_OVFL)"""
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, SO_RXQ_OVFL, 1)
+        return hasattr(sock, "recvmsg")
+    except OSError:
+        return False
+
+
+def recv_one(sock, rx):
+    if rx.kernel_drops is None:
+        return sock.recv(65535)
+    data, anc, _, _ = sock.recvmsg(65535, socket.CMSG_SPACE(4))
+    for level, typ, val in anc:             # present only once the counter is non-zero
+        if level == socket.SOL_SOCKET and typ == SO_RXQ_OVFL and len(val) >= 4:
+            rx.kernel_drops = struct.unpack("=I", val[:4])[0]
+    return data
+
+
 def serve(a, sock, rx, child=None):
     stop = {"flag": False}
 
@@ -526,17 +587,19 @@ def serve(a, sock, rx, child=None):
         stop["flag"] = True
     old = {sig: signal.signal(sig, on_signal) for sig in (signal.SIGINT, signal.SIGTERM)}
     child_exit = None
+    if enable_drop_count(sock):
+        rx.kernel_drops = 0
     try:
         while not stop["flag"]:
             now = time.time()
             try:
-                data = sock.recv(65535)
+                data = recv_one(sock, rx)
                 rx.datagram(data, time.time())
                 # drain whatever is queued without the timeout path
                 sock.setblocking(False)
                 try:
                     for _ in range(4096):
-                        rx.datagram(sock.recv(65535), time.time())
+                        rx.datagram(recv_one(sock, rx), time.time())
                 except (BlockingIOError, InterruptedError):
                     pass
                 finally:
@@ -579,6 +642,7 @@ def run_exec(a):
 
 def replay(a, path):
     rx = Receiver(a)
+    rx.timed = False
     with open(path, "rb") as f:
         data = f.read()
     if not data.startswith(CAP_MAGIC):
@@ -699,6 +763,8 @@ def selftest():
         rc = replay(a, os.path.join(r.dir, "capture.bin"))
     check(rc == 0 and open(os.path.join(tmp, "replayed", "results.jsonl")).read() == read(r, "results.jsonl"),
           "replay: same results")
+    check(json.load(open(os.path.join(tmp, "replayed", "receive.json")))["missing_context"] is None,
+          "replay: no arrival times, no loss context")
 
     # 2. duplicates (3 copies), reorder, corruption of copy 0 of every 7th frame
     recs, logs, frames, last_seq = _synthetic_run(0x2222, copies=3)
@@ -731,6 +797,21 @@ def selftest():
     check(rc["missing_in_end_range"] == len(drop) - 1, "loss: missing within last_seq")
     check(len(rc["incomplete_messages"]) == 1 and rc["incomplete_messages"][0]["type"] == "REC", "loss: incomplete msg")
     check(rc["end_seen"] and not rc["hash_ok"], "loss: END from the 2nd copy, hash differs")
+    # 3b. loss context from arrival times: 1 ms apart, a 250 ms silence before seq 20, seq 30..34 lost (a 60 ms hole)
+    recs, logs, frames, last_seq = _synthetic_run(0x3434)
+    a3 = argparse.Namespace(out=os.path.join(tmp, "out"), run_dir=None, quiet=True, quarantine_out=None, once=True,
+                            timeout=0)
+    rx3, t = Receiver(a3), 1000.0
+    with contextlib.redirect_stdout(io.StringIO()):
+        for seq, cs in frames:
+            t += 0.25 if seq == 20 else 0.06 if seq == 35 else 0.001
+            if not 30 <= seq <= 34:
+                for c in cs:
+                    rx3.datagram(c, t)
+        rx3.due(t, force=True)
+    ctx = one(rx3).receive["missing_context"]
+    check(len(ctx) == 1 and ctx[0]["seq"] == [30, 34] and ctx[0]["quiet_before_ms"] == 250.0 and
+          ctx[0]["hole_ms"] == 65.0 and ctx[0]["t_ms"] == 277.0, "loss context: %s" % ctx)
     # 4. no END at all
     recs, logs, frames, last_seq = _synthetic_run(0x4444)
     r = one(process([c for seq, cs in frames if seq <= last_seq for c in cs]))
@@ -775,10 +856,12 @@ def selftest():
     with contextlib.redirect_stdout(io.StringIO()):
         serve(a, sock, rx)
     check(len(rx.runs) == 2 and all(rr.receive["complete"] for rr in rx.runs.values()), "socket: two complete runs")
+    check(not sys.platform.startswith("linux") or all(rr.receive["kernel_drops"] == 0 for rr in rx.runs.values()),
+          "socket: kernel drop counter read (0)")
     if fails:
         print("xts_recv selftest: FAIL\n  " + "\n  ".join(fails))
         return 1
-    print("xts_recv selftest: PASS (clean, replay, dup/reorder/corrupt, loss, no END, crash + quarantine, 2 runs over a socket)")
+    print("xts_recv selftest: PASS (clean, replay, dup/reorder/corrupt, loss + context, no END, crash + quarantine, 2 runs over a socket)")
     import shutil
     shutil.rmtree(tmp, ignore_errors=True)
     return 0

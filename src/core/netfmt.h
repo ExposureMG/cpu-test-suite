@@ -66,6 +66,34 @@ uint16_t xts_netfmt_ip_checksum(const uint8_t *ip, uint32_t n);
 /* Parse an XTS header + payload (a UDP datagram body). 0 ok and *h filled; -1 short/magic/version/length, -2 CRC. */
 int xts_netfmt_parse(const uint8_t *buf, uint32_t n, xts_net_hdr_t *h);
 
+/* Frame pacing with a wake-up window (console transmitter; times in any monotonic tick unit, e.g. timebase ticks).
+ * A receiver on Wi-Fi with power save dozes after ~100 ms without traffic; the access point then buffers its frames
+ * until it wakes (next beacon, ~100 ms) and drops what does not fit (hardware 2026-10-19: 5-17 consecutive frames, every
+ * copy, lost 50-60 ms after a 200 ms measurement pause or the run start, only when >= ~40 frames followed at once).
+ * So after an idle period >= idle_ticks the transmitter opens a wake window of wake_ticks during which frames are
+ * spaced wake_frame_ticks apart (a few datagrams wake the receiver; the AP buffers fit them), then frame_ticks again.
+ *   xts_net_pace_t p = {0};
+ *   while (now() < p.next) ;                                   // before each frame
+ *   start = now(); send copy 0; first = now(); send the other copies; end = now();
+ *   xts_net_pace_sent(&p, &cfg, start, first, end);
+ * The first frame ever sent counts as following an idle period (the receiver was quiet while the console booted). */
+typedef struct xts_net_pace_cfg {
+  uint64_t frame_ticks;      /* start-to-start spacing of frames (all copies) normally */
+  uint64_t wake_frame_ticks; /* the same inside a wake window (>= frame_ticks to slow down) */
+  uint64_t idle_ticks;       /* a gap from the previous frame's end to this frame's copy 0 this long opens a window */
+  uint64_t wake_ticks;       /* window length from that copy 0 (0 = no wake windows) */
+} xts_net_pace_cfg_t;
+typedef struct xts_net_pace {
+  uint64_t next;             /* earliest start of the next frame */
+  uint64_t last_end;         /* end of the previous frame */
+  uint64_t wake_until;       /* end of the current wake window */
+  uint64_t wakes;            /* wake windows opened */
+  int started;               /* a frame was sent */
+} xts_net_pace_t;
+/* account one sent frame: start = when the transmitter began it (after pacing), first = when copy 0 left (after any
+ * measurement fence), end = when the last copy left. Updates p->next. */
+void xts_net_pace_sent(xts_net_pace_t *p, const xts_net_pace_cfg_t *c, uint64_t start, uint64_t first, uint64_t end);
+
 /* message type name ("HELLO", "REC", ...; "?" if unknown) and the reverse */
 const char *xts_net_type_name(int type);
 #define XTS_PK_MAX 8

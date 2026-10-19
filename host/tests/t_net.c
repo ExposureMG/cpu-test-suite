@@ -58,6 +58,92 @@ HTEST(net_fmt)
   HT_EQ_U64(xts_netfmt_eth_frame(f, mac, 1, &h, ""), 14 + 20 + 8 + 36);   /* 78 >= 60: no padding needed */
 }
 
+/* ---- pacing with a wake window (xts_net_pace_sent) ---- */
+/* A receiver on Wi-Fi in power save, as seen on hardware: it dozes 100 ms after the last datagram; while it dozes the
+ * access point buffers up to 64 datagrams for it and drops the rest; it wakes at the first beacon (every 102.4 ms, phase
+ * `ph`) after a datagram was buffered. Times in us. */
+typedef struct { double last_rx, wake_at, ph; int buffered, dropped; } psrx_t;
+static void psrx_copy(psrx_t *r, double t)
+{
+  if (r->buffered && t >= r->wake_at) { r->last_rx = r->wake_at; r->buffered = 0; }
+  if (t < r->last_rx + 100000.0) { r->last_rx = t; return; }          /* awake */
+  if (!r->buffered) {                                                   /* doze: TIM in the next beacon */
+    double k = ceil((t - r->ph) / 102400.0);
+    r->wake_at = r->ph + k * 102400.0;
+  }
+  if (r->buffered < 64) r->buffered++; else r->dropped++;
+}
+/* nframes queued at once after an idle gap of gap_us (the 209 ms self.cores pause); 3 copies 50 us apart, 1000
+ * copies/s; returns datagrams dropped and the time the last frame left */
+static int pace_run(int wake, double ph, int nframes, double gap_us, double *done)
+{
+  const xts_net_pace_cfg_t c = { 3000, wake ? 15000 : 3000, 50000, wake ? 150000 : 0 };
+  xts_net_pace_t p = { 0 };
+  psrx_t r = { 0, 0, ph, 0, 0 };
+  uint64_t now = 1000000;
+  /* one frame long before (receiver awake then), then the gap */
+  xts_net_pace_sent(&p, &c, now, now, now + 300);
+  psrx_copy(&r, (double)now);
+  now += (uint64_t)gap_us;
+  for (int i = 0; i < nframes; i++) {
+    if (now < p.next) now = p.next;
+    uint64_t start = now;
+    for (int k = 0; k < 3; k++) psrx_copy(&r, (double)(start + 50u * (unsigned)k));
+    now = start + 250;
+    xts_net_pace_sent(&p, &c, start, start + 100, now);
+  }
+  *done = (double)now;
+  return r.dropped;
+}
+
+HTEST(net_pace_wake)
+{
+  /* the window: opened by the first frame and after >= idle_ticks of silence, spacing wake_frame_ticks inside it */
+  const xts_net_pace_cfg_t c = { 10, 100, 1000, 500 };
+  xts_net_pace_t p = { 0 };
+  xts_net_pace_sent(&p, &c, 5000, 5002, 5004);                         /* first frame ever: window 5002..5502 */
+  HT_EQ_U64(p.wakes, 1);
+  HT_EQ_U64(p.next, 5100);
+  xts_net_pace_sent(&p, &c, 5100, 5101, 5103);
+  xts_net_pace_sent(&p, &c, 5501, 5501, 5503);                         /* last start inside the window */
+  HT_EQ_U64(p.next, 5601);
+  xts_net_pace_sent(&p, &c, 5601, 5602, 5604);                         /* after it: normal spacing, no new window */
+  HT_EQ_U64(p.next, 5611);
+  HT_EQ_U64(p.wakes, 1);
+  xts_net_pace_sent(&p, &c, 6603, 6603, 6605);                         /* 999 ticks of silence: below idle_ticks */
+  HT_EQ_U64(p.wakes, 1);
+  HT_EQ_U64(p.next, 6613);
+  xts_net_pace_sent(&p, &c, 6613, 7605, 7607);                         /* copy 0 held 1000 ticks (fence): a window */
+  HT_EQ_U64(p.wakes, 2);
+  HT_EQ_U64(p.next, 6713);
+  const xts_net_pace_cfg_t off = { 10, 100, 1000, 0 };                 /* wake_ticks 0: plain pacing */
+  xts_net_pace_t q = { 0 };
+  xts_net_pace_sent(&q, &off, 100, 101, 102);
+  xts_net_pace_sent(&q, &off, 5000, 5001, 5002);
+  HT_CHECK(q.wakes == 0 && q.next == 5010);
+
+  /* the hardware failure (seq 57-73 of a timing run): 49 frames right after a 209 ms pause. Without the window some
+   * beacon phases drop datagrams (and whole frames: all 3 copies); with it none does, at a cost below the window. */
+  int lossy_phases = 0, worst_wake = 0;
+  double extra = 0;
+  for (int ph = 0; ph < 1024; ph++) {
+    double t_old, t_new;
+    int d_old = pace_run(0, ph * 100.0, 49, 209000, &t_old);
+    int d_new = pace_run(1, ph * 100.0, 49, 209000, &t_new);
+    if (d_old) lossy_phases++;
+    if (d_new > worst_wake) worst_wake = d_new;
+    if (t_new - t_old > extra) extra = t_new - t_old;
+  }
+  HT_CHECK(lossy_phases > 100);
+  HT_EQ_U64(worst_wake, 0);
+  HT_CHECK(extra < 150000.0);
+  /* a long burst (2000 frames) after the pause: still nothing lost, the window costs < 150 ms once */
+  double t_old, t_new;
+  HT_EQ_U64(pace_run(1, 51200, 2000, 209000, &t_new), 0);
+  pace_run(0, 51200, 2000, 209000, &t_old);
+  HT_CHECK(t_new - t_old < 150000.0);
+}
+
 /* ---- the in-RAM results store ---- */
 static int tnf_enum(xts_caselist_t *cl) { xts_case_add(cl, "a"); return 0; }
 static int tnf_run(const xts_case_t *c, xts_ctx_t *ctx) { (void)c; (void)ctx; return 0; }

@@ -186,6 +186,7 @@ int xts_sink_end(const char *status)
   xj_kv_uint(&j, "tx_timeouts", ns.tx_timeouts);
   xj_kv_uint(&j, "fence_waits", ns.fence_waits);
   xj_kv_uint(&j, "fence_wait_ticks", ns.fence_wait_ticks);
+  xj_kv_uint(&j, "wake_windows", ns.wake_windows);
   xj_end(&j);
   xj_finish(&j);
   for (int i = 0; i < 3; i++) xts_core_send(XTS_PK_END, b, (uint32_t)j.len);

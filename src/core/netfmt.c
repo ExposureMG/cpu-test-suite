@@ -143,3 +143,14 @@ int xts_netfmt_parse(const uint8_t *buf, uint32_t n, xts_net_hdr_t *h)
 
 static const char *const type_names[XTS_PK_MAX + 1] = { "?", "HELLO", "REC", "LOG", "CRUMB", "CRASH", "HANG", "BLOCK", "END" };
 const char *xts_net_type_name(int type) { return type > 0 && type <= XTS_PK_MAX ? type_names[type] : "?"; }
+
+void xts_net_pace_sent(xts_net_pace_t *p, const xts_net_pace_cfg_t *c, uint64_t start, uint64_t first, uint64_t end)
+{
+  if (c->wake_ticks && (!p->started || first - p->last_end >= c->idle_ticks)) {
+    p->wake_until = first + c->wake_ticks;
+    p->wakes++;
+  }
+  p->started = 1;
+  p->last_end = end;
+  p->next = start + (first < p->wake_until ? c->wake_frame_ticks : c->frame_ticks);
+}
