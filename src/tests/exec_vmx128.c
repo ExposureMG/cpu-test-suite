@@ -53,6 +53,20 @@ static int opi(const xts_insn_t *d, int field)
 static uint32_t fw(uint32_t s, uint32_t e, uint32_t m) { return (s << 31) | (e << 23) | (m & 0x7FFFFF); }
 static uint32_t rm23(xts_rng_t *r) { return (uint32_t)xts_rng_next(r) & 0x7FFFFF; }
 static uint32_t rbit(xts_rng_t *r) { return (uint32_t)xts_rng_below(r, 2); }
+/* Random sign and mantissa around exponent e (rfw_in: e0 + [0, n)). The draws are sequenced sign, exponent, mantissa: the
+ * order xenon-gcc evaluated the former fw(rbit(r), e, rm23(r)) in (left to right), so console cases keep their inputs.
+ * Never put two draws in one expression or argument list: C leaves their order open and host gcc evaluates call
+ * arguments right to left (tools/check_draws.py, make check). */
+static uint32_t rfw(xts_rng_t *r, uint32_t e)
+{
+  uint32_t s = rbit(r);
+  return fw(s, e, rm23(r));
+}
+static uint32_t rfw_in(xts_rng_t *r, uint32_t e0, uint32_t n)
+{
+  uint32_t s = rbit(r), e = e0 + (uint32_t)xts_rng_below(r, n);
+  return fw(s, e, rm23(r));
+}
 static float u2f(uint32_t u) { union { uint32_t u; float f; } a; a.u = u; return a.f; }
 static uint32_t f2u(float f) { union { uint32_t u; float f; } a; a.f = f; return a.u; }
 
@@ -78,11 +92,11 @@ static void fma_targeted(const xts_insn_t *d, xts_rng_t *r, xts_exec_t *x, const
       if (xe_pct(r, 30)) *slot[3 - s0 - s1] = nans[xts_rng_below(r, XE_N(nans))];
     } else if (sc == 1) {
       uint32_t e1 = 30 + (uint32_t)xts_rng_below(r, 60), e2 = 100 + (uint32_t)xts_rng_below(r, 27) - e1;
-      p1[i] = fw(rbit(r), e1, rm23(r));
-      p2[i] = fw(rbit(r), e2, rm23(r));
-      if (xe_pct(r, 20)) p1[i] = fw(rbit(r), 0, rm23(r));                  /* denormal input */
+      p1[i] = rfw(r, e1);
+      p2[i] = rfw(r, e2);
+      if (xe_pct(r, 20)) p1[i] = rfw(r, 0);                               /* denormal input */
       uint32_t m = xts_rng_below(r, 4);
-      ad[i] = m == 0 ? 0 : m == 1 ? fw(rbit(r), 0, rm23(r)) : m == 2 ? fw(rbit(r), 1 + (uint32_t)xts_rng_below(r, 3), rm23(r)) : fw(rbit(r), e1 / 2, rm23(r));
+      ad[i] = m == 0 ? 0 : m == 1 ? rfw(r, 0) : m == 2 ? rfw_in(r, 1, 3) : rfw(r, e1 / 2);
     } else {
       float a = small[xts_rng_below(r, XE_N(small))], b = small[xts_rng_below(r, XE_N(small))];
       float p = a * b;
@@ -117,11 +131,11 @@ static void vmsum_targeted(const xts_insn_t *d, xts_rng_t *r, xts_exec_t *x, con
   for (int i = 0; i < 4; i++) { a[i] = 0; b[i] = fw(0, 127, 0); }
   switch (sc) {
   case 0: {
-    a[0] = fw(rbit(r), 137, rm23(r)); b[0] = fw(0, 137, rm23(r));            /* p0 ~ 2^20 */
+    a[0] = rfw(r, 137); b[0] = fw(0, 137, rm23(r));                           /* p0 ~ 2^20 */
     int df = diffs[sub % XE_N(diffs)];
-    a[1] = fw(rbit(r), 127, rm23(r)); b[1] = fw(0, (uint32_t)(147 - df), rm23(r));
-    if (sub & 1) { int d2 = diffs[(sub + 5) % XE_N(diffs)]; a[2] = fw(rbit(r), 127, rm23(r)); b[2] = fw(0, (uint32_t)(147 - d2), rm23(r)); }
-    if (sub & 2) { int d3 = diffs[(sub + 9) % XE_N(diffs)]; a[3] = fw(rbit(r), 127, rm23(r)); b[3] = fw(0, (uint32_t)(147 - d3), rm23(r)); }
+    a[1] = rfw(r, 127); b[1] = fw(0, (uint32_t)(147 - df), rm23(r));
+    if (sub & 1) { int d2 = diffs[(sub + 5) % XE_N(diffs)]; a[2] = rfw(r, 127); b[2] = fw(0, (uint32_t)(147 - d2), rm23(r)); }
+    if (sub & 2) { int d3 = diffs[(sub + 9) % XE_N(diffs)]; a[3] = rfw(r, 127); b[3] = fw(0, (uint32_t)(147 - d3), rm23(r)); }
     if (sub & 4) { a[0] ^= 0x80000000u; }                                      /* p0 sign flipped relative to the rest */
     *note = "targeted vmsum: small products below the largest";
     break;
@@ -130,13 +144,13 @@ static void vmsum_targeted(const xts_insn_t *d, xts_rng_t *r, xts_exec_t *x, con
     uint32_t sx = rbit(r), ex = 100 + (uint32_t)xts_rng_below(r, 50), ey = 100 + (uint32_t)xts_rng_below(r, 50);
     uint32_t xv = fw(sx, ex, rm23(r)), yv = fw(0, ey, rm23(r));
     a[0] = xv; b[0] = yv; a[1] = xv ^ 0x80000000u; b[1] = yv;
-    if (sub & 1) { uint32_t zv = fw(rbit(r), 120, rm23(r)); a[2] = zv; b[2] = yv; a[3] = zv ^ 0x80000000u; b[3] = yv; }
+    if (sub & 1) { uint32_t zv = rfw(r, 120); a[2] = zv; b[2] = yv; a[3] = zv ^ 0x80000000u; b[3] = yv; }
     if (sub & 2) { uint32_t tmp = a[0]; a[0] = a[1]; a[1] = tmp; }
     *note = "targeted vmsum: x + (-x)";
     break;
   }
   case 2:
-    for (int i = 0; i < 4; i++) { a[i] = fw(rbit(r), 0, 0); b[i] = fw(rbit(r), 120 + (uint32_t)xts_rng_below(r, 15), rm23(r)); }
+    for (int i = 0; i < 4; i++) { a[i] = fw(rbit(r), 0, 0); b[i] = rfw_in(r, 120, 15); }
     if (sub & 1) a[1 + (sub & 2)] = fw(rbit(r), 1, 0) ;              /* a tiny non-zero product among zeros */
     *note = "targeted vmsum: all-zero products, signs";
     break;
@@ -144,22 +158,22 @@ static void vmsum_targeted(const xts_insn_t *d, xts_rng_t *r, xts_exec_t *x, con
     switch (sub % 4) {
     case 0: a[0] = fw(0, 200, 0); b[0] = fw(0, 200, 0); a[1] = fw(1, 200, 0); b[1] = fw(0, 200, 0); break;
     case 1: a[0] = fw(0, 200, 0); b[0] = fw(0, 200, 0); a[1] = fw(1, 200, 0x7FFFFF); b[1] = fw(0, 200, 0); break;
-    case 2: a[0] = fw(0, 200, rm23(r)); b[0] = fw(0, 200, rm23(r)); a[1] = fw(rbit(r), 130, rm23(r)); b[1] = fw(0, 128, rm23(r)); break;
+    case 2: a[0] = fw(0, 200, rm23(r)); b[0] = fw(0, 200, rm23(r)); a[1] = rfw(r, 130); b[1] = fw(0, 128, rm23(r)); break;
     default: a[0] = fw(0, 200, 0); b[0] = fw(0, 200, 0); a[1] = fw(1, 210, rm23(r)); b[1] = fw(0, 210, rm23(r)); break;
     }
-    if (sub & 4) { a[2] = fw(rbit(r), 140, rm23(r)); b[2] = fw(0, 120, rm23(r)); }
+    if (sub & 4) { a[2] = rfw(r, 140); b[2] = fw(0, 120, rm23(r)); }
     *note = "targeted vmsum: product overflow";
     break;
   case 4:
     a[0] = (sub & 1) ? 0xFF800000u : 0x7F800000u; b[0] = fw(0, 127, 0);
     a[1] = fw((sub >> 1) & 1, 200, 0); b[1] = fw(0, 200, 0);
-    if (sub & 4) { a[2] = fw(rbit(r), 130, rm23(r)); b[2] = fw(0, 130, rm23(r)); }
+    if (sub & 4) { a[2] = rfw(r, 130); b[2] = fw(0, 130, rm23(r)); }
     *note = "targeted vmsum: infinity plus overflowing sum";
     break;
   default:
     for (int i = 0; i < 4; i++) {
-      a[i] = xe_pct(r, 60) ? fw(rbit(r), 0, rm23(r)) : fw(rbit(r), 100 + (uint32_t)xts_rng_below(r, 40), rm23(r));
-      b[i] = xe_pct(r, 40) ? fw(rbit(r), 0, rm23(r)) : fw(rbit(r), 100 + (uint32_t)xts_rng_below(r, 40), rm23(r));
+      a[i] = xe_pct(r, 60) ? rfw(r, 0) : rfw_in(r, 100, 40);
+      b[i] = xe_pct(r, 40) ? rfw(r, 0) : rfw_in(r, 100, 40);
     }
     a[0] = fw(0, 137, rm23(r)); b[0] = fw(0, 137, rm23(r));
     x->in.vscr.w[3] |= XTS_VSCR_NJ;
@@ -183,10 +197,11 @@ static uint32_t pk_lane(xts_rng_t *r)
   }
   if (m < 36) return 0x40400000u + (uint32_t)(xts_rng_next(r) & 0x3FFFFFF);   /* far outside any window */
   if (m < 48) return nans[xts_rng_below(r, XE_N(nans))];
-  if (m < 60) return fw(rbit(r), 102 + (uint32_t)xts_rng_below(r, 11), rm23(r));            /* half denormals / below */
+  if (m < 60) return rfw_in(r, 102, 11);          /* half denormals / below */
   if (m < 78) {                                   /* half-range exponents, rounding-sensitive mantissa tails */
     static const uint32_t tail[] = { 0x0000, 0x1000, 0x0FFF, 0x1001, 0x1FFF, 0x0800, 0x17FF, 0x1800 };
-    return fw(rbit(r), 113 + (uint32_t)xts_rng_below(r, 30), (rm23(r) & ~0x1FFFu) | tail[xts_rng_below(r, XE_N(tail))]);
+    uint32_t s = rbit(r), e = 113 + (uint32_t)xts_rng_below(r, 30), mant = rm23(r) & ~0x1FFFu;
+    return fw(s, e, mant | tail[xts_rng_below(r, XE_N(tail))]);
   }
   if (m < 90) {                                   /* colour range */
     static const uint32_t col[] = { 0x00000000, 0x3F800000, 0x3F000000, 0x3B808081, 0x3F7FFFFF, 0xBF800000, 0x40000000, 0x80000000, 0x3C000000 };
@@ -200,7 +215,10 @@ static uint32_t upk_word(xts_rng_t *r)
   static const uint16_t h[] = { 0x8000, 0x0000, 0x7C00, 0xFC00, 0x0001, 0x03FF, 0x83FF, 0x7FFF, 0xFFFF, 0x3C00, 0xBC00, 0x0400, 0x7BFF, 0x0200, 0x4000 };
   static const uint32_t f10[] = { 0x200, 0x1FF, 0x3FF, 0x000, 0x001, 0x201, 0x1FE, 0x2FF };
   uint32_t m = xts_rng_below(r, 100);
-  if (m < 40) return ((uint32_t)h[xts_rng_below(r, XE_N(h))] << 16) | (xe_pct(r, 80) ? h[xts_rng_below(r, XE_N(h))] : (uint32_t)(xts_rng_next(r) & 0xFFFF));
+  if (m < 40) {
+    uint32_t hi = h[xts_rng_below(r, XE_N(h))];
+    return (hi << 16) | (xe_pct(r, 80) ? h[xts_rng_below(r, XE_N(h))] : (uint32_t)(xts_rng_next(r) & 0xFFFF));
+  }
   if (m < 65) {
     uint32_t w = 0;
     for (int i = 0; i < 3; i++) w |= (xe_pct(r, 70) ? f10[xts_rng_below(r, XE_N(f10))] : (uint32_t)(xts_rng_next(r) & 0x3FF)) << (10 * i);
@@ -208,7 +226,9 @@ static uint32_t upk_word(xts_rng_t *r)
   }
   if (m < 80) {                                   /* 4_20_20_20 style fields */
     static const uint32_t f20[] = { 0x80000, 0x7FFFF, 0xFFFFF, 0, 1, 0x80001, 0x40000 };
-    return (f20[xts_rng_below(r, XE_N(f20))] ^ (uint32_t)(xts_rng_below(r, 3) == 0 ? xts_rng_next(r) & 0xFFFFF : 0)) | ((uint32_t)xts_rng_below(r, 16) << 28);
+    uint32_t f = f20[xts_rng_below(r, XE_N(f20))];
+    f ^= (uint32_t)(xts_rng_below(r, 3) == 0 ? xts_rng_next(r) & 0xFFFFF : 0);
+    return f | ((uint32_t)xts_rng_below(r, 16) << 28);
   }
   if (m < 90) { uint32_t b = (uint32_t)xts_rng_next(r); return (b & 0x01010101u) * 0xFF ^ (xe_pct(r, 50) ? 0 : b); }
   return (uint32_t)xts_rng_next(r);
@@ -220,10 +240,11 @@ static void v128_hook(const xts_insn_t *d, xts_rng_t *r, xts_exec_t *x, const in
     if (t >= 0) fma_targeted(d, r, x, ops, t, note);
   } else if (is_m(d, "vmsum3fp128") || is_m(d, "vmsum4fp128")) {
     if (t >= 0) vmsum_targeted(d, r, x, ops, t, note);
-  } else if (is_m(d, "vpkd3d128")) {
-    xts_set_vr(x, (int)ops[opi(d, XTS_F_VB128)], xts_vr4(pk_lane(r), pk_lane(r), pk_lane(r), pk_lane(r)));
-  } else if (is_m(d, "vupkd3d128")) {
-    xts_set_vr(x, (int)ops[opi(d, XTS_F_VB128)], xts_vr4(upk_word(r), upk_word(r), upk_word(r), upk_word(r)));
+  } else if (is_m(d, "vpkd3d128") || is_m(d, "vupkd3d128")) {
+    uint32_t (*lane)(xts_rng_t *) = is_m(d, "vpkd3d128") ? pk_lane : upk_word;
+    uint32_t w[4];                                  /* lane 0 first */
+    for (int i = 0; i < 4; i++) w[i] = lane(r);
+    xts_set_vr(x, (int)ops[opi(d, XTS_F_VB128)], xts_vr4(w[0], w[1], w[2], w[3]));
   }
 }
 

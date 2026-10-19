@@ -227,8 +227,8 @@ power-cycle in between.
 make host-test                     # unit tests + end-to-end transport tests (real UDP to tools/xts_recv.py, loss /
                                    # duplicate / reorder / corruption injection, crash and hang reports) + receiver selftest
 make host-dryrun PROFILE=semantic  # run a profile on the PC through the receiver: build/dryrun-semantic/run/
-make check                         # check_encoder (all 484 insns vs xenon-as), check_model (results4), check_illegal,
-                                   # check_records (on the received dry-run directory)
+make check                         # check_draws (RNG draw order, libclang), check_encoder (all 484 insns vs xenon-as),
+                                   # check_model (results4), check_illegal, check_records (on the received dry-run directory)
 python3 tools/xts_recv.py --selftest
 python3 tools/xts_merge.py <run dirs...> -o merged/        # merge runs from one or more consoles
 python3 tools/xts_schedmodel.py merged/merged.jsonl -o model/ --td   # scheduling model (JSON/CSV + LLVM .td sketch)

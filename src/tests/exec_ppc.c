@@ -284,10 +284,10 @@ static int run_spr(const xts_case_t *c, xts_ctx_t *ctx)
   if (is_mnem(d, "mtspr")) {
     int rs = (int)ops[op_index(d, XTS_F_RS)];
     uint64_t v = xe_gpr_value(r);
-    if (c->arg[1] == 1 && xe_pct(r, 60)) v = xe_xer[xts_rng_below(r, XE_N(xe_xer))] | (xts_rng_next(r) & 0x7F);
+    if (c->arg[1] == 1 && xe_pct(r, 60)) { v = xe_xer[xts_rng_below(r, XE_N(xe_xer))]; v |= xts_rng_next(r) & 0x7F; }
     xts_set_gpr(&x, rs, v);
   } else {
-    if (c->arg[1] == 1) xts_set_xer(&x, xe_xer[xts_rng_below(r, XE_N(xe_xer))] | (xts_rng_next(r) & 0x7F));
+    if (c->arg[1] == 1) { uint64_t v = xe_xer[xts_rng_below(r, XE_N(xe_xer))]; xts_set_xer(&x, v | (xts_rng_next(r) & 0x7F)); }
     if (c->arg[1] == 8) xts_set_lr(&x, xts_rng_next(r));
     if (c->arg[1] == 9) xts_set_ctr(&x, xts_rng_next(r));
   }

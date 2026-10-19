@@ -25,7 +25,7 @@
 | `make PROFILE=p [BUILD=d]` | console ELF `d/xts-p.elf32`, then `check_illegal` on it |
 | `make host-test` | `tools/xts_recv.py --selftest`, then all `HTEST`s (host/tests): registry, scheduler, sink + in-RAM results store, wire format, end-to-end runs through the real receiver (`t_net_*`: byte-exact results, injected loss / duplicates / corruption / reordering, test-core crash and hang reports, quarantine), fit maths, encoder round trip, kernel builder, model |
 | `make host-dryrun PROFILE=p` | the whole profile on the PC through the real scheduler and sink; the messages go as UDP to `tools/xts_recv.py --exec`, which writes `d/dryrun-p/run/`. Single words are simulated by the model when it has a handler (status pass/fail as on hardware, `"backend":"host-model"`), otherwise `skip`. Every kernel is built with the encoder and every word decoded back: the last log line counts words/kernels/bad words; exit status 2 if any word does not decode as the instruction it was built for. This is how you validate a family without hardware. |
-| `make check` | `check-encoder` (C encoder vs `xenon-as -mvmx128 -mcell -many` for all 484 insns), `check-model` (results4 replay), `check-illegal`, `check-records` (schema/vocabulary on the received dry run) |
+| `make check` | `check-draws` (no two RNG draws in one argument list or expression: `tools/check_draws.py`, libclang), `check-encoder` (C encoder vs `xenon-as -mvmx128 -mcell -many` for all 484 insns), `check-model` (results4 replay), `check-illegal`, `check-records` (schema/vocabulary on the received dry run) |
 | `make check-model` | per mnemonic: matched / mismatched (with diffs) / unimplemented; fails only on mismatches |
 | `make recv` | `tools/xts_recv.py --out xts-runs`: receive a console run (README "Output") |
 
@@ -66,6 +66,10 @@ XTS_FAMILY(exec_altivec, .kind = "semantic", .axes = "sf,vscr_nj", .enumerate = 
 - `.axes`: the axes the family is sensitive to; the scheduler only varies those (and only if the profile asks).
 - `.block_cases`: cases per scheduler block (a BLOCK message with the record count follows each block). A crash or hang of the test core stops the run with a crash/hang record for the exact case (see "Transport, crashes and quarantine"); a CRUMB message names the case before it runs (every case of `self`/`semantic` families, every 16th of the other kinds).
 - `run()` emits records and log lines; they leave right away as REC/LOG messages. Nothing is stored and there is nothing to flush. Do not call `xts_results_foreach` from `run()` (it is for `finish()`).
+- Random inputs come from `ctx->rng` only (seeded per case, so a case id regenerates its inputs on the host). Draw at
+  most once per argument list or expression: C leaves the order of call arguments and operands open, and host gcc
+  evaluates call arguments right to left where xenon-gcc goes left to right. Write `uint32_t s = rbit(r), e = ...;`
+  (separate declarators or statements are sequenced), never `fw(rbit(r), e, rm23(r))`. `make check-draws` enforces this.
 - Optional `.setup()` (once, before the first block; `<0` skips the family) and `.teardown()`.
 - Optional `.finish(ctx)`: summaries after the family's last block of a profile row (see "Family finish()").
 - Emitting yourself: `xts_record_t r; xts_record_init(&r); r.metric = "latency"; r.value = v; r.unit = "cycles";
