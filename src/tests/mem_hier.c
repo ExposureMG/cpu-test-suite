@@ -24,9 +24,16 @@
  *                       is the next X. Controls: ld+evict must reload at L2 level, none+evict at memory level, else the
  *                       verdict is "undetermined".
  *   tlb.<pages>         one line per 64 KB page (spread over all L1/L2 sets) vs the same lines packed (control):
- *                       translation penalty per load for 8..2048 pages (ERAT 64 entries, TLB 1K entries; libxenon reloads
+ *                       translation penalty per load for 8..2032 pages (ERAT 64 entries, TLB 1K entries; libxenon reloads
  *                       the TLB in software - first touch of a page is a miss interrupt). tlb.knees summarises the
  *                       tlb.* records (finish() hook, like chase.levels).
+ *                       Limit (hardware, 2026-10-19): the sweep stops at 2032 pages. The spread chase costs a flat ~635
+ *                       cycles per load (one software refill each) from 1600 to 2032 pages (~2036 distinct 64 KB pages
+ *                       touched); at 2040 (~2044 pages, plus the kernel's own code/stack/state pages: past 2048) the test
+ *                       core livelocks inside the measurement (probe.tlb, run 0025ae045805e86e: HANG), and tlb.2048 froze
+ *                       the whole console once (run 0025ae042607416b). Likely libxenon's refill handler
+ *                       (drivers/ppc/except.S): it writes 11 page-number bits into PpeTlbIndex bits 16-26, i.e. 2048
+ *                       slots. A libxenon limit, not a measurement: nothing above ~2040 live 64 KB pages can run.
  * Axis: other_cores (applied later by the SMT work): only the latency/bandwidth cases run under it (chase.*, stream.*). */
 #include <math.h>
 #include <stdio.h>
@@ -43,7 +50,8 @@ static const uint32_t rand_kb[] = { 4, 8, 12, 16, 20, 24, 28, 30, 32, 34, 36, 40
 #define NRAND (int)(sizeof rand_kb / sizeof rand_kb[0])
 static const uint32_t seq_kb[] = { 16, 64, 256, 512, 1024, 2048, 4096, 32768 };
 static const uint32_t strides[] = { 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144 };
-static const uint32_t tlb_pages[] = { 8, 16, 32, 48, 64, 80, 96, 128, 192, 256, 384, 512, 768, 1024, 1280, 1536, 2048 };
+static const uint32_t tlb_pages[] = { 8, 16, 32, 48, 64, 80, 96, 128, 192, 256, 384, 512, 768, 1024, 1280, 1536, 2032 };
+/* 2032 is the largest page count that runs: see the tlb.<pages> limit in the header (probe.tlb) */
 #define NTLB (int)(sizeof tlb_pages / sizeof tlb_pages[0])
 static const char *const stream_kinds[] = { "ld_line", "ld_full", "lvx_full", "st_sparse", "st_full", "stvx_full",
                                             "dcbz_stvx", "dcbz128_stvx", "dcbz_only" };
@@ -563,10 +571,9 @@ static int run_xdcbt(const xts_case_t *c, xts_ctx_t *ctx)
 }
 
 /* --------------------------------------------------------------------------------------------------- TLB/ERAT */
-static int tlb_measure(xts_ctx_t *ctx, int i, double *pen, double *vp, double *vc, xts_tspec_t *s, xts_tresult_t *rp,
-                       xts_tresult_t *rc, int *err)
+static int tlb_measure_n(xts_ctx_t *ctx, uint32_t n, double *pen, double *vp, double *vc, xts_tspec_t *s,
+                         xts_tresult_t *rp, xts_tresult_t *rc, int *err)
 {
-  uint32_t n = tlb_pages[i];
   *vc = chase_point(ctx, 0, n, MU_LINE, 0, 0, 1, 0x7E1u + n, 1, 0, s, rc, err);
   if (*err) return -1;
   *vp = chase_point(ctx, 0, n, MU_PAGE, 512, MU_LINE, 1, 0x7E1u + n, 1, 0, s, rp, err);
@@ -574,23 +581,28 @@ static int tlb_measure(xts_ctx_t *ctx, int i, double *pen, double *vp, double *v
   *pen = *vp - *vc;
   return 0;
 }
-
-static int run_tlb(const xts_case_t *c, xts_ctx_t *ctx)
+static int tlb_measure(xts_ctx_t *ctx, int i, double *pen, double *vp, double *vc, xts_tspec_t *s, xts_tresult_t *rp,
+                       xts_tresult_t *rc, int *err)
 {
-  int i = (int)c->arg[1], err;
+  return tlb_measure_n(ctx, tlb_pages[i], pen, vp, vc, s, rp, rc, err);
+}
+
+static int run_tlb_n(const xts_case_t *c, xts_ctx_t *ctx, uint32_t n)
+{
+  int err;
   xts_tspec_t s;
   xts_tresult_t rp, rc;
   double pen, vp, vc;
-  if (tlb_measure(ctx, i, &pen, &vp, &vc, &s, &rp, &rc, &err) < 0) { emit_fail(ctx, "penalty", err, c->id); return 0; }
+  if (tlb_measure_n(ctx, n, &pen, &vp, &vc, &s, &rp, &rc, &err) < 0) { emit_fail(ctx, "penalty", err, c->id); return 0; }
   mu_det_t d;
   mu_det_begin(&d);
-  uint32_t n = tlb_pages[i];
   xj_kv_str(&d.j, "level", n <= 192 ? "l1" : "l2");
   xj_kv_uint(&d.j, "size", (uint64_t)n * MU_PAGE);
   xj_kv_uint(&d.j, "stride", MU_PAGE + MU_LINE);
   xj_kv_int(&d.j, "width", 8);
   xj_kv_uint(&d.j, "offset", 0);
   xj_kv_uint(&d.j, "pages", n);
+  xj_kv_uint(&d.j, "pages_touched_est", (uint64_t)n * (MU_PAGE + MU_LINE) / MU_PAGE + 1);   /* distinct 64 KB pages */
   xj_kv_double(&d.j, "spread_cycles", vp);
   xj_kv_double(&d.j, "packed_cycles", vc);
   xj_kv_str(&d.j, "note", "one line per 64 KB page vs the same number of lines packed; same L1/L2 set spread");
@@ -831,7 +843,7 @@ static int mh_run(const xts_case_t *c, xts_ctx_t *ctx)
   case H_PFSTREAM: return run_stream(c, ctx, 1);
   case H_COP: return run_cop(c, ctx);
   case H_XDCBT: return run_xdcbt(c, ctx);
-  case H_TLB: return run_tlb(c, ctx);
+  case H_TLB: return run_tlb_n(c, ctx, tlb_pages[c->arg[1]]);
   default: return -1;
   }
 }
@@ -839,3 +851,28 @@ static int mh_run(const xts_case_t *c, xts_ctx_t *ctx)
 XTS_FAMILY(mem_hier, .kind = "mem", .axes = "other_cores", .enumerate = mh_enum, .run = mh_run, .finish = mh_finish, .block_cases = 4,
            .desc = "pointer-chase latency 4K-64M with levels/knees, strides, L1/L2 associativity by conflict sets, "
                    "streams, prefetch (xdcbt2 method), cache-op costs, ERAT/TLB translation cost");
+
+/* probe.tlb (profile tlb_bisect): the mem.hier TLB case at the page counts between the last one that ran (1536) and the
+ * one that froze the whole console (2048: framebuffer static, no core reported, run 0025ae042607416b). Result (run
+ * 0025ae045805e86e): 1600-2032 pass at a flat ~635 cycles, 2040 hangs the test core; 2040 and up are quarantined, so
+ * the profile now re-checks the cases below the limit. Ascending, one
+ * case per block, a breadcrumb confirmed on the wire before every case (kind "probe"): the last breadcrumb names the
+ * first page count that stops the console. Fine steps just below 2048 test whether the limit is libxenon's 11-bit TLB
+ * index (2048 entries) - pages_touched_est in each record counts the distinct 64 KB pages of the spread chase. Not in
+ * the mem profile (mem.* does not match). */
+static const uint32_t tlbx_pages[] = { 1600, 1728, 1856, 1984, 2016, 2032, 2040, 2044, 2046, 2047, 2048 };
+
+static int tlbx_enum(xts_caselist_t *cl)
+{
+  for (unsigned i = 0; i < sizeof tlbx_pages / sizeof tlbx_pages[0]; i++) {
+    xts_case_t *c = xts_case_addf(cl, "tlbx.%u", tlbx_pages[i]);
+    if (!c) return -1;
+    c->arg[0] = tlbx_pages[i];
+  }
+  return 0;
+}
+
+static int tlbx_run(const xts_case_t *c, xts_ctx_t *ctx) { return run_tlb_n(c, ctx, (uint32_t)c->arg[0]); }
+
+XTS_FAMILY(probe_tlb, .kind = "probe", .enumerate = tlbx_enum, .run = tlbx_run, .block_cases = 1,
+           .desc = "TLB lockup bisect: mem.hier's page-spread chase at 1600-2048 pages, breadcrumb before every case");

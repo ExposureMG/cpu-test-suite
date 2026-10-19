@@ -7,4 +7,8 @@
 #
 # Text after '#' is a comment. tools/xts_recv.py --quarantine-out quarantine.txt appends a suggested line (with the run
 # nonce, vector and srr0 as a comment) for every CRASH/HANG report it receives: review it, then rebuild.
-mem.hier tlb.2048   # run 0025ae042607416b (jasper, 4745094): console died silently after tlb.1536, no CRASH/HANG; 134 MB page-spread chase (2048 x 64 KB pages, software TLB reload) - under investigation
+probe.tlb tlbx.2040  # hang (timeout 60 s), run 0025ae045805e86e (jasper-00710500-5831): test core livelocks once live 64 KB pages pass ~2048 (libxenon software TLB refill)
+probe.tlb tlbx.2044  # above the limit found by tlbx.2040
+probe.tlb tlbx.2046  # above the limit found by tlbx.2040
+probe.tlb tlbx.2047  # above the limit found by tlbx.2040
+probe.tlb tlbx.2048  # above the limit; tlb.2048 froze the whole console (run 0025ae042607416b)

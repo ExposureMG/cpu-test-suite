@@ -53,6 +53,7 @@ int xts_profile_names_family(const char *family)
 static int crumb_every(const char *kind)
 {
   if (!kind || !strcmp(kind, "self") || !strcmp(kind, "semantic") || !strcmp(kind, "test")) return 1;
+  if (!strcmp(kind, "probe")) return 1;                /* probes look for the case that stops the console */
   return xts_crumb_every_timing;
 }
 static int crumb_hooked(const char *kind) { return kind && (!strcmp(kind, "self") || !strcmp(kind, "semantic")); }
@@ -61,7 +62,7 @@ static int crumb_hooked(const char *kind) { return kind && (!strcmp(kind, "self"
 static uint32_t timeout_for(const char *k)
 {
   if (!k || !strcmp(k, "self") || !strcmp(k, "semantic") || !strcmp(k, "test")) return 2000000u;
-  if (!strcmp(k, "mem") || !strcmp(k, "smt")) return 60000000u;
+  if (!strcmp(k, "mem") || !strcmp(k, "smt") || !strcmp(k, "probe")) return 60000000u;
   return 10000000u;
 }
 uint32_t xts_core_xc_timeout_us(void) { return cur_timeout_us; }
