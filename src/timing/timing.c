@@ -29,6 +29,7 @@ int xts_time_build(const xts_tspec_t *s, int depth, xts_kbuf_t *k)
   xk_emit(k, XI_isync, 0);
   xk_emit(k, XI_mftb, 0, R_T0, 268);
   xk_align(k, s->align ? s->align : 32);
+  for (int i = 0; i < (s->top_offset & 0x7C) / 4; i++) xk_emit(k, XI_ori, 0, 0, 0, 0);   /* nop */
   int top = xk_here(k);
   if (s->body(k, depth, s->arg) < 0 && !k->err) {
     snprintf(k->errmsg, sizeof k->errmsg, "body() failed at depth %d", depth);

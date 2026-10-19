@@ -650,22 +650,47 @@ class Builder(object):
             while parent.setdefault(x, x) != x:
                 x = parent[x]
             return x
+        # classes that block issue for many cycles (unit.conflict busy verdict "blocking": div, fdiv, mul, ...) serialise
+        # with whatever they are mixed with, so their "shared" edges say nothing about a common pipe and would bridge
+        # unrelated groups (int + fp + loads in one). Group without them, then put each into the group it shares most
+        # edges with.
+        blocking = OrderedDict()
+        for k, recs in sorted(self.sub("busy"), key=lambda kv: (str(kv[0][1]), str(kv[0][2]))):
+            if majority(self.verd[k]) == "blocking":
+                blocking.setdefault(k[1], []).append(k[2])
+        shared = []
         for k, recs in sorted(self.sub("edge")):
             v = majority(self.verd[k])
             edges.append(OrderedDict(a=k[1], b=k[2], verdict=v, overlap=self.a(recs, "edge %s+%s" % k[1:]),
                                      votes=dict(Counter(x for x in self.verd[k] if x))))
-            find(k[1]), find(k[2])
+            for c in k[1:3]:
+                if c not in blocking:
+                    find(c)
             if v == "shared":
+                shared.append((k[1], k[2]))
+                if k[1] in blocking or k[2] in blocking:
+                    continue
                 ra, rb = find(k[1]), find(k[2])
                 if ra != rb:
                     parent[rb] = ra
+        placement = OrderedDict()
+        for c in blocking:                              # most shared edges into one group; none or a tie -> its own group
+            votes = Counter(find(o) for x, y in shared for o in ((y,) if x == c else (x,) if y == c else ())
+                            if o not in blocking)
+            top = votes.most_common(2)
+            if top and (len(top) == 1 or top[0][1] > top[1][1]):
+                parent[c] = top[0][0]
+            else:
+                parent[c] = c
+            placement[c] = sorted(r for r, n in votes.items() if top and n == top[0][1]) if top else []
         groups = []
         if parent:
             comp = defaultdict(list)
             for c in sorted(parent):
                 comp[find(c)].append(c)
             for members in sorted(comp.values(), key=lambda m: m[0]):
-                groups.append(OrderedDict(name=group_name(members), classes=members, source="unit.conflict"))
+                groups.append(OrderedDict(name=group_name(members), classes=members, source="unit.conflict",
+                                          issue_blocking=[c for c in members if c in blocking]))
         elif self.graphs:
             g = majority([json.dumps(x) for x in self.graphs])
             for members in json.loads(g):
@@ -684,6 +709,9 @@ class Builder(object):
             busy["%s/%s" % (k[1], k[2])] = OrderedDict(busy_cycles=self.a(recs, "busy %s/%s" % k[1:], self.V[k]),
                                                        verdict=majority(self.verd[k]))
         M["pipes"] = OrderedDict(groups=groups, edges=edges, busy=busy,
+                                 issue_blocking=OrderedDict((c, OrderedDict(blocks=v, group=group_of.get(c),
+                                                                            candidates=placement.get(c, [])))
+                                                            for c, v in blocking.items()),
                                  assumed=None if groups else "no unit.conflict data: compiler should assume one pipe per unit")
         M["classes"] = classes
         # ---- dual issue
@@ -1367,7 +1395,8 @@ def gen_td(model, prov, amap, ppc_dir):
         writes[key] = nm
         assign.append((v, o, nm, lat, rt, src))
     w("// ---- pipes (%s)" % ("ASSUMED one per unit: no unit.conflict data" if assumed else
-                             "connected components of 'shared' edges of the unit.conflict graph; U_* = UNVERIFIED"))
+                             "connected components of 'shared' edges of the unit.conflict graph (issue-blocking classes "
+                             "joined to the group they share most edges with); U_* = UNVERIFIED"))
     for g in groups:
         w("def XePipe_%s : ProcResource<%d> { let BufferSize = 0; }   // %s: %s" % (
             ident(g["name"]), g.get("units", 1), g.get("source", ""), " ".join(g["classes"])))
@@ -1656,6 +1685,11 @@ def _fixture(scale=1.0, sib=None, v1_info=False):
         add("unit.conflict", "mix.int+mul", "overlap", 0.9, unit="ratio", detail={"classes": ["int", "mul"], "verdict": "separate"})
         add("unit.conflict", "busy.div/int", "penalty", 1.0, mnem="divwx",
             detail={"producer": "div", "stream": "int", "busy_cycles": 1.0, "verdict": "non-blocking"})
+        # an issue-blocking class serialises with everything: its shared edges must not merge int and fp
+        add("unit.conflict", "mix.fdiv+fp", "overlap", 0.02, unit="ratio", detail={"classes": ["fdiv", "fp"], "verdict": "shared"})
+        add("unit.conflict", "mix.fdiv+int", "overlap", 0.03, unit="ratio", detail={"classes": ["fdiv", "int"], "verdict": "shared"})
+        add("unit.conflict", "busy.fdiv/fp", "penalty", 80.0, mnem="fdivx",
+            detail={"producer": "fdiv", "stream": "fp", "busy_cycles": 80.0, "verdict": "blocking"})
         add("bypass.matrix", "lwz>int.RA", "penalty", 4.9, mnem="addx",
             detail={"producer": "lwz", "consumer": "int", "producer_mnem": "lwz", "consumer_mnem": "addx", "slot": "RA",
                     "slot_role": "source", "distance": 0, "verdict": "stall"})
@@ -1814,6 +1848,9 @@ def selftest():
         check(I["stw"]["store_throughput"]["line"]["value"] == 1.0, "store throughput")
         groups = [sorted(g["classes"]) for g in M["pipes"]["groups"]]
         check(["div", "mul"] in groups and ["int"] in groups, "pipe groups from shared edges: %s" % groups)
+        ib = M["pipes"]["issue_blocking"]
+        check(["fdiv"] in groups and ["fp"] in groups and ib["fdiv"]["candidates"] == ["fp", "int"] and ib["fdiv"]["blocks"] == ["fp"],
+              "issue-blocking class does not bridge pipe groups; a tie leaves it alone: %s %s" % (groups, dict(ib)))
         check(I["divwx"]["pipe_group"] == "mul_div" and I["divwx"]["pipe_group_source"] == "class representative",
               "pipe group on class representative")
         pr = M["pairing"]

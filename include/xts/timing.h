@@ -91,6 +91,11 @@ typedef struct xts_tspec {
    * A/B/A re-runs of depths[0] use ndepths*repeats; on the host the run index is the depth index). When set, it is
    * called instead of setup. */
   int (*setup2)(struct xts_exec *x, int depth, int run, void *arg);
+  /* ---- v3 ---- */
+  int top_offset;                    /* bytes of nops after the `align` padding (multiple of 4): the loop top lands at
+                                        align*k + top_offset. frontend.loop (2026-10-19): with the top at byte 12 of a
+                                        16-byte fetch group and bodies a multiple of 4 words, the per-iteration loop
+                                        cost is smooth in the body length; with the top at 0 it jumps 4-11 cycles. */
 } xts_tspec_t;
 #define XTS_TSPEC_DEFAULT { .unit = "", .depths = { 4, 8, 12, 16, 24, 32 }, .ndepths = 6, .repeats = 5, .iters = 256, \
                             .align = 32, .spread_limit = 0.02, .resid_limit = 0.01 }
