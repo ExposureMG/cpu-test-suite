@@ -54,6 +54,11 @@ Payload objects may carry more members than listed (e.g. BLOCK `family`, `ms`, `
 - **Copies:** each frame is sent `XTS_NET_COPIES` times (default 2), about 50 µs apart. The copies are identical except
   for flags bit0 and the copy index.
 - **Pacing:** at most `XTS_NET_FPS` frames per second (default 2000), copies included.
+- **Wake window:** when no frame has left for `XTS_NET_WAKE_IDLE_MS` (default 50 ms; a measurement pause, the run
+  start), the next `XTS_NET_WAKE_MS` (default 150 ms) go out at `XTS_NET_WAKE_FPS` (default 200) copies per second.
+  A receiver on Wi-Fi in power save dozes after ~100 ms of silence and its access point drops what it cannot buffer
+  until the receiver wakes at a beacon; the slow start lets it wake first. END `net.wake_windows` counts the windows
+  (`make NET_WAKE_MS=0` turns them off).
 - **Measurement fence:** no frame is started while the test core is measuring (`xts_xc_measuring()`).
 - **Breadcrumbs:** a CRUMB is sent, and `xts_net_wait_sent` confirms it, before its case is released to the test core.
 
@@ -69,6 +74,11 @@ Payload objects may carry more members than listed (e.g. BLOCK `family`, `ms`, `
   - END reports no `send_failures` (messages the console could not queue).
 - **Report:** everything is written to `receive.json` (`complete`, `missing_seq` ranges, `crc_errors`, `duplicates`,
   `incomplete_messages`, `status`). The receiver prints a one-line verdict.
+- **Where loss happened:** `missing_context` gives, per missing range, `t_ms` (arrival of the frame before it, from the
+  run's first frame), `hole_ms` (until the frame after it) and `quiet_before_ms` (longest silence in the second before);
+  `null` for `--replay`. `kernel_drops` counts datagrams the PC's kernel dropped on the socket because its buffer was full
+  (Linux `SO_RXQ_OVFL`; `null` when unknown). Loss with `kernel_drops` 0 shortly after a silence of >= 100 ms points at
+  Wi-Fi power save on the receiving PC (`iw dev <wlan> set power_save off`).
 - **Output:** the run directory `<out>/<console_tag>/<run_nonce>/` holds `results.jsonl`, `results.csv`,
   `failures.jsonl`, `run.log`, `sysinfo.json`, `summary.json`, `temps.csv` (from BLOCK `temps`), `crash.json` (when a
   CRASH or HANG message arrived), `receive.json` and `capture.bin` (every unique valid frame, for `--replay`).

@@ -99,6 +99,13 @@ NET_COPIES ?= 2
 #   the PHY and many switches/routers do not forward for several seconds after a port's link returns.
 NET_SETTLE_S ?= 10
 OPT_DEFS += -DXTS_NET_SETTLE_S=$(NET_SETTLE_S)
+# NET_WAKE_MS / NET_WAKE_IDLE_MS / NET_WAKE_FPS: after NET_WAKE_IDLE_MS (default 50) without a frame, send the next
+#   NET_WAKE_MS (default 150) at NET_WAKE_FPS (default 200) copies/s, so a receiver on Wi-Fi in power save wakes before
+#   its access point's buffer overflows (lost bursts after measurement pauses). NET_WAKE_MS=0: off.
+NET_WAKE_MS ?= 150
+NET_WAKE_IDLE_MS ?= 50
+NET_WAKE_FPS ?= 200
+OPT_DEFS += -DXTS_NET_WAKE_MS=$(NET_WAKE_MS) -DXTS_NET_WAKE_IDLE_MS=$(NET_WAKE_IDLE_MS) -DXTS_NET_WAKE_FPS=$(NET_WAKE_FPS)
 # NET_DRIVER=own: XTS's own TX-only descriptor driver (default: libxenon's enet.c driver, proven on hardware).
 NET_DRIVER ?=
 ifeq ($(NET_DRIVER),own)

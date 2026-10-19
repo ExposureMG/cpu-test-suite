@@ -54,6 +54,7 @@ typedef struct xts_net_stats {
   uint64_t messages, frames, frame_copies, bytes;
   uint64_t ring_full_waits, send_failures, tx_timeouts;
   uint64_t fence_waits, fence_wait_ticks;     /* times / timebase ticks the transmitter waited for a measurement */
+  uint64_t wake_windows;                      /* slow-start windows after an idle link (console, xts_net_pace_sent) */
   uint32_t last_seq;
   int link_up;
 } xts_net_stats_t;
