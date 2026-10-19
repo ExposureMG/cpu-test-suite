@@ -55,7 +55,9 @@ Payload objects may carry more members than listed (e.g. BLOCK `family`, `ms`, `
   for flags bit0 and the copy index.
 - **Pacing:** at most `XTS_NET_FPS` frames per second (default 2000), copies included.
 - **Wake window:** when no frame has left for `XTS_NET_WAKE_IDLE_MS` (default 50 ms; a measurement pause, the run
-  start), the next `XTS_NET_WAKE_MS` (default 150 ms) go out at `XTS_NET_WAKE_FPS` (default 200) copies per second.
+  start), the next frames go out at `XTS_NET_WAKE_FPS` (default 200) copies per second for as long as the silence
+  lasted, at least `XTS_NET_WAKE_MS` (default 150 ms) and at most `XTS_NET_WAKE_MAX_MS` (default 500 ms; the run start
+  gets the longest).
   A receiver on Wi-Fi in power save dozes after ~100 ms of silence and its access point drops what it cannot buffer
   until the receiver wakes at a beacon; the slow start lets it wake first. END `net.wake_windows` counts the windows
   (`make NET_WAKE_MS=0` turns them off).

@@ -70,8 +70,11 @@ int xts_netfmt_parse(const uint8_t *buf, uint32_t n, xts_net_hdr_t *h);
  * A receiver on Wi-Fi with power save dozes after ~100 ms without traffic; the access point then buffers its frames
  * until it wakes (next beacon, ~100 ms) and drops what does not fit (hardware 2026-10-19: 5-17 consecutive frames, every
  * copy, lost 50-60 ms after a 200 ms measurement pause or the run start, only when >= ~40 frames followed at once).
- * So after an idle period >= idle_ticks the transmitter opens a wake window of wake_ticks during which frames are
- * spaced wake_frame_ticks apart (a few datagrams wake the receiver; the AP buffers fit them), then frame_ticks again.
+ * So after an idle period >= idle_ticks the transmitter opens a wake window during which frames are spaced
+ * wake_frame_ticks apart (a few datagrams wake the receiver; the AP buffers fit them), then frame_ticks again. The window
+ * lasts as long as the silence was, at least wake_ticks and at most wake_max_ticks (0 = always wake_ticks): after a deep
+ * doze the receiver takes longer to wake (smt run 2026-10-19: ~300 ms holes after 370-390 ms of silence, past a
+ * fixed 150 ms window).
  *   xts_net_pace_t p = {0};
  *   while (now() < p.next) ;                                   // before each frame
  *   start = now(); send copy 0; first = now(); send the other copies; end = now();
@@ -81,7 +84,8 @@ typedef struct xts_net_pace_cfg {
   uint64_t frame_ticks;      /* start-to-start spacing of frames (all copies) normally */
   uint64_t wake_frame_ticks; /* the same inside a wake window (>= frame_ticks to slow down) */
   uint64_t idle_ticks;       /* a gap from the previous frame's end to this frame's copy 0 this long opens a window */
-  uint64_t wake_ticks;       /* window length from that copy 0 (0 = no wake windows) */
+  uint64_t wake_ticks;       /* window length from that copy 0 (0 = no wake windows); the minimum when wake_max_ticks */
+  uint64_t wake_max_ticks;   /* > wake_ticks: the window grows with the silence up to this; 0 = fixed wake_ticks */
 } xts_net_pace_cfg_t;
 typedef struct xts_net_pace {
   uint64_t next;             /* earliest start of the next frame */

@@ -61,6 +61,15 @@ extern xts_env_t xts_env;
 /* Index of a named free slot in xts_env.user[] (allocated on first use, stable for the run). -1 if all are taken. */
 int xts_env_slot(const char *name);
 void xts_env_reset(void);   /* defaults: sf=1, everything else 0 */
+/* 1 while a load condition is applied: a sibling-thread mode, other-core load, a thread priority other than medium (the
+ * priority cases run at by default) or a changed CPU speed. Values measured then are not comparable with the
+ * default-condition timing baselines, and 1-cycle controls are expected to miss (smt run 2026-10-19: a busy sibling
+ * doubles throughput costs, low priority ~32x). */
+static inline int xts_env_loaded(void)
+{
+  return xts_env.sibling != 0 || xts_env.other_cores != 0 || (xts_env.thread_prio != 0 && xts_env.thread_prio != 2) ||
+         xts_env.speed != 0;
+}
 
 /* ---- condition vector (what a record's "cond" object holds) ------------------------------------------------------------ */
 typedef struct xts_condvec {

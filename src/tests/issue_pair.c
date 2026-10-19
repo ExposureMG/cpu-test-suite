@@ -93,8 +93,9 @@ static int run_control(xts_ctx_t *ctx, int emit)
   xj_kv_str(&j, "verdict", m1.ok && m2.ok ? (ok ? "1-cycle filler confirmed" : "FILLER NOT 1/CYCLE") : "UNDETERMINED");
   xj_kv_double(&j, "err", m1.err);
   xts_time_fit_json(&j, "fit2", &m2.s, &m2.r, 2);         /* "fit" is the 1 word/unit stream */
+  if (xts_env_loaded()) xj_kv_str(&j, "note", "load condition applied: the filler is not expected at 1 cycle");
   xj_finish(&j);
-  if (xts_status_measured(st) && !ok) st = XTS_ST_FAIL;
+  if (xts_status_measured(st) && !ok) st = xts_env_loaded() ? XTS_ST_INFO : XTS_ST_FAIL;   /* expected under load */
   xts_time_emit_ex(ctx, &m1.s, &m1.r, XI_addi, &(xts_temit_t){ .metric = "issue_cost", .extra_json = buf, .status = st });
   return 0;
 }

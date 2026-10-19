@@ -116,6 +116,21 @@ HTEST(net_pace_wake)
   xts_net_pace_sent(&p, &c, 6613, 7605, 7607);                         /* copy 0 held 1000 ticks (fence): a window */
   HT_EQ_U64(p.wakes, 2);
   HT_EQ_U64(p.next, 6713);
+  /* the window grows with the silence (smt run: ~300 ms holes after 370-390 ms of silence): min 500, max 3000 */
+  const xts_net_pace_cfg_t g = { 10, 100, 1000, 500, 3000 };
+  xts_net_pace_t r = { 0 };
+  xts_net_pace_sent(&r, &g, 100, 100, 101);                            /* boot: the longest window */
+  HT_EQ_U64(r.wake_until, 3100);
+  xts_net_pace_sent(&r, &g, 2600, 2600, 2601);                         /* 2499 quiet -> window 2499 */
+  HT_EQ_U64(r.wake_until, 2600 + 2499);
+  xts_net_pace_sent(&r, &g, 3500, 3500, 3501);                         /* 899 < idle: no new window */
+  HT_EQ_U64(r.wakes, 2);
+  xts_net_pace_sent(&r, &g, 4600, 4600, 4601);                         /* 1099 quiet -> window 1099 */
+  HT_EQ_U64(r.wake_until, 4600 + 1099);
+  xts_net_pace_sent(&r, &g, 4610, 20000, 20001);                       /* 15399 quiet -> capped at 3000 */
+  HT_EQ_U64(r.wake_until, 23000);
+  xts_net_pace_sent(&r, &g, 20100, 20200, 20201);                      /* 199 quiet: no window; min 500 untouched */
+  HT_EQ_U64(r.wakes, 4);
   const xts_net_pace_cfg_t off = { 10, 100, 1000, 0 };                 /* wake_ticks 0: plain pacing */
   xts_net_pace_t q = { 0 };
   xts_net_pace_sent(&q, &off, 100, 101, 102);

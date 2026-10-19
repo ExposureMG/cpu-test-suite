@@ -26,7 +26,7 @@
 #ifndef XTS_CRUMB_EVERY_TIMING
 #define XTS_CRUMB_EVERY_TIMING 16
 #endif
-#define CRUMB_WAIT_US 200000u     /* a CRUMB must be on the wire before its case runs */
+#define CRUMB_WAIT_US 600000u     /* a CRUMB must be on the wire before its case runs (a wake window lasts <= 500 ms) */
 
 const char *xts_active_profile_name;
 const char *xts_current_run_id;

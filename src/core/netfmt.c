@@ -147,7 +147,9 @@ const char *xts_net_type_name(int type) { return type > 0 && type <= XTS_PK_MAX 
 void xts_net_pace_sent(xts_net_pace_t *p, const xts_net_pace_cfg_t *c, uint64_t start, uint64_t first, uint64_t end)
 {
   if (c->wake_ticks && (!p->started || first - p->last_end >= c->idle_ticks)) {
-    p->wake_until = first + c->wake_ticks;
+    uint64_t w = c->wake_ticks, quiet = p->started ? first - p->last_end : c->wake_max_ticks;   /* boot: the longest */
+    if (c->wake_max_ticks > w) w = quiet < w ? w : quiet > c->wake_max_ticks ? c->wake_max_ticks : quiet;
+    p->wake_until = first + w;
     p->wakes++;
   }
   p->started = 1;

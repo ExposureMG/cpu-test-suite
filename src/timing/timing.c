@@ -295,7 +295,7 @@ static void emit_core(xts_ctx_t *ctx, const emit_in_t *in, const xts_temit_t *e)
   if (in->diff) status = xts_status_worst(status, res_status(in->rb));
   if (r && r->failed) xj_kv_str(&j, "error", r->why);
   if (in->diff && in->rb && in->rb->failed) xj_kv_str(&j, "error_ref", in->rb->why);
-  if (e->baseline_key && status == XTS_ST_PASS && in->insn >= 0 && !isnan(value)) {
+  if (e->baseline_key && status == XTS_ST_PASS && in->insn >= 0 && !isnan(value) && !xts_env_loaded()) {   /* baselines are default-condition values */
     const char *key = !strcmp(e->baseline_key, "*") ? xts_time_baseline_key(e->metric) : e->baseline_key;
     double base;
     int b = xts_time_baseline_check(in->insn, key, value, e->baseline_tol > 0 ? e->baseline_tol : 0.10, &base);

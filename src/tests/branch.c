@@ -327,6 +327,11 @@ static int run_bp(meas_t *m, xts_ctx_t *ctx, bp_t *p, const char *unit, double e
   } else if (p->kind == K_BHT || p->kind == K_CALL) {
     m->s.ndepths = 6;
     for (int i = 0; i < 6; i++) m->s.depths[i] = dl[i];
+  } else if (p->kind != K_ALIGN) {
+    /* plain branch bodies (taken / not taken / b, random and pattern mispredicts, register branches): the line layout of
+     * xts/timing.h (top at byte 12 of a fetch group, whole-line depths). loop measures the overhead of short bodies,
+     * align the line placement, bht/call depth means history / call depth: those keep their layout. */
+    xts_time_line_layout(&m->s, 1);
   }
   return mrun(m, ctx);
 }

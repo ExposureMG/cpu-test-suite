@@ -84,8 +84,8 @@ static int dhcp_ok;
 /* wake window (make NET_WAKE_MS= NET_WAKE_IDLE_MS= NET_WAKE_FPS=; NET_WAKE_MS=0 disables it): after XTS_NET_WAKE_IDLE_MS
  * without a frame, XTS_NET_WAKE_MS at XTS_NET_WAKE_FPS copies per second. 200 copies/s put at most ~24 copies into the
  * AP's power-save buffer before a dozing receiver wakes at the next beacon (~100 ms; on hardware 63 and 96 copies fitted
- * and the receiver was awake again 70-120 ms after the burst began). 150 ms at 200 copies/s delays a CRUMB queued
- * behind 16 RECs by ~170 ms, inside CRUMB_WAIT_US (src/core/main.c). */
+ * and the receiver was awake again 70-120 ms after the burst began). A 500 ms window at 200 copies/s delays a CRUMB queued
+ * behind 16 RECs by at most ~500 ms, inside CRUMB_WAIT_US (src/core/main.c). */
 #ifndef XTS_NET_WAKE_MS
 #define XTS_NET_WAKE_MS 150
 #endif
@@ -94,6 +94,10 @@ static int dhcp_ok;
 #endif
 #ifndef XTS_NET_WAKE_FPS
 #define XTS_NET_WAKE_FPS 200
+#endif
+/* the window grows with the silence before it, up to XTS_NET_WAKE_MAX_MS (make NET_WAKE_MAX_MS=; = NET_WAKE_MS: fixed) */
+#ifndef XTS_NET_WAKE_MAX_MS
+#define XTS_NET_WAKE_MAX_MS 500
 #endif
 #ifndef XTS_NET_RING_BYTES
 #define XTS_NET_RING_BYTES (4u << 20)
@@ -597,7 +601,8 @@ static void send_frame(const xts_net_hdr_t *h0, volatile const uint32_t *ring_sr
 {
   const xts_net_pace_cfg_t pc = { xts_xc_us_ticks(1000000u / XTS_NET_FPS) * XTS_NET_COPIES,
                                   xts_xc_us_ticks(1000000u / XTS_NET_WAKE_FPS) * XTS_NET_COPIES,
-                                  xts_xc_us_ticks(XTS_NET_WAKE_IDLE_MS * 1000u), xts_xc_us_ticks(XTS_NET_WAKE_MS * 1000u) };
+                                  xts_xc_us_ticks(XTS_NET_WAKE_IDLE_MS * 1000u), xts_xc_us_ticks(XTS_NET_WAKE_MS * 1000u),
+                                  xts_xc_us_ticks(XTS_NET_WAKE_MAX_MS * 1000u) };
   while (xts_xc_tb() < t_pace.next) ;                   /* pacing (bounded: one frame period) */
   uint64_t start = xts_xc_tb(), last = 0, first = start;
   for (int c = 0; c < XTS_NET_COPIES; c++) {
