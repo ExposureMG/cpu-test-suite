@@ -106,8 +106,10 @@ uint32_t xm_fpscr_loaded(uint32_t v)
   uint32_t f = v & ~(XTS_FPSCR_FEX | XTS_FPSCR_VX);
   f = xm_fpscr_merge(f & ~XTS_FPSCR_FX, 0) | (v & XTS_FPSCR_FX);
   /* Xenon: FPSCR[NI] cannot be set - every results4 case loaded with NI=1 (196 of them, incl. trapping ones) read
-   * back NI=0 */
-  return f & ~XTS_FPSCR_NI;
+   * back NI=0. Neither can the reserved bit 20 (0x800): results4's mtfs* cases, and in the XTS semantic run every FP
+   * case loaded with it (593, all 35 opcode-59/63 mnemonics that read or keep the FPSCR incl. fmr, mffs, mcrfs) read it
+   * back as 0. No non-FP case was loaded with it yet (src/model/KNOWN.md). */
+  return f & ~(XTS_FPSCR_NI | XTS_FPSCR_RSVD20);
 }
 
 void xm_state_loaded(xts_state_t *s)

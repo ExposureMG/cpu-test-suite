@@ -9,8 +9,20 @@ family) is either fixed in the model or recorded here with its evidence.
   the model's input, so the model sees what the CPU holds. Consequence for the `fpscr_ni` axis: setting NI through the
   input image (mtfsf) has no effect; whether `mtfsb1 29` can set it is untested.
 - mtfsf 0xFF does not write FEX/VX (summary bits); mtvscr keeps only NJ and SAT.
+- **FPSCR bit 20 (reserved, 0x800) cannot be set either** (semantic run 2026-10-19, Jasper): all 593 FP cases whose
+  input image had it set read it back as 0, across the 35 opcode-59/63 mnemonics that keep or read the FPSCR (fmr,
+  fabs, fcmpu, mffs, mcrfs field 5, the arithmetic ops ...); results4's mtfs* cases already showed that mtfs* cannot set
+  it. Cleared in the model's input like NI. Unverified: no non-FP case was loaded with the bit, so "the slot's mtfsf
+  cannot set it" and "every FP instruction clears it first" are not yet told apart (a non-FP case with bit 20 set in its
+  input FPSCR decides it: kept = the second rule).
 
 ## Open
+- **Not a model disagreement: the semantic run's load failures (2026-10-19) were an XTS bug.** About half of every
+  load family (lbz 25/48, ld 26/48, lvx 24/72, lvx128 72/72, ...) read data that an EARLIER store case had left in
+  scratch, while the expected baseline (byte i = i*13+7) was what the suite core had written and flushed. A dcbf on the
+  suite core did not remove the test core's L1 copy. Fixed in src/exec/exec_console.c (both cores flush the shared
+  buffers; xts_dcbf_range and xts_prep flush on the test core too); self.cores data_sync_* now measures the effect.
+  Re-run semantic before reading any load/store record of that run.
 - **vmsum4fp128: hardware is 1 ULP lower than the model on a sign-mixed case** (first console smoke run, 2026-10-19,
   Jasper, PVR 0x00710500; exec.vmx128 case vmsum4fp128#12, word 173945D8, sf=64, VSCR 0). Inputs (VA = VD = v89,
   VB = v8): A = AF3D0257 96C316AE 37EFC7C9 C5106AAB, B = 80000001 007FFFFF BF000000 4F000000. Model D4906AAB in every

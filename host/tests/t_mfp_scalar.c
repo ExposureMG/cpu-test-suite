@@ -260,3 +260,24 @@ HTEST(mfp_convert_fpscr)
   HT_EQ_U64(O.fpr[5] >> 32, 0xFFF80000u);
   HT_EQ_U64((uint32_t)O.fpr[5], (uint32_t)O.fpscr);
 }
+
+/* Xenon hardware (results4 mtfs*, XTS semantic run): reserved FPSCR bit 20 cannot be set, not even by the slot's mtfsf
+ * 0xFF - every FP case loaded with it read it back as 0 (fmr, mffs, mcrfs included) */
+HTEST(mfp_fpscr_rsvd20)
+{
+  reset(0x800u | 1);
+  run(xts_enc(XI_fmrx, 0, 1, 3));
+  HT_EQ_U64(O.fpscr, 1);
+  reset(0x800u | 1);
+  run(xts_enc(XI_mffsx, 0, 5));
+  HT_EQ_U64((uint32_t)O.fpr[5], 1);
+  reset(0x800u | XTS_FPSCR_VXSOFT);
+  run(xts_enc(XI_mcrfs, 0, 2, 5));                               /* field 5 = bits 20-23 */
+  HT_EQ_U64(xm_cr_field(&O, 2), 0x4);                            /* bit 20 reads 0, VXSOFT 1 */
+  reset(1);
+  run(xts_enc(XI_mtfsb1x, 0, 20));
+  HT_EQ_U64(O.fpscr, 1);
+  reset(0x800u | 1);
+  run(xts_enc(XI_addi, 3, 4, 1));
+  HT_EQ_U64(O.fpscr, 1);
+}

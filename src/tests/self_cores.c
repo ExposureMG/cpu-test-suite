@@ -4,6 +4,15 @@
  *   heartbeat    the heartbeats of PIR 0 (executor), 2 (suite) and 4 (transmitter) all advance within 20 ms (console)
  *   code_sync    1,000 times: write `li r3,k; blr` on the suite core (xts_sync_code: dcbst, sync, icbi), call it on the
  *                test core (the executor does sync; isync first) and get k back - cross-core instruction-cache coherence
+ *   data_sync_<how> 1,000 rounds of cross-core DATA hand-over through a 512-byte cached buffer (the exec engine's
+ *                scratch path), counting rounds in which the reader saw any stale word:
+ *     c2t_read   suite writes + dcbf, test core reads; the test core had read the buffer the round before   (info)
+ *     c2t_store  same, but the test core had STORED to the buffer the round before (a store case, then a load case)  (info)
+ *     c2t_staged as c2t_store, and the test core dcbf's its own copy first (what the exec engine does)     (must be 0)
+ *     t2c_plain  test core writes, suite reads; the suite had read the buffer the round before          (info)
+ *     t2c_staged as t2c_plain, and the suite dcbf's its own copy before reading (what the exec engine does) (must be 0)
+ *                The info variants are hardware facts: a nonzero count means a dcbf on one core does not invalidate
+ *                the other core's L1.
  *   smt_exit_p<n> a busy_int load on PIR 1/3/5 starts, its heartbeat advances, it stops through xts_smt_exit and the exit
  *                self-check (smt_entry.S: SPRG2 == table == TCB self word, PIR) passed (exit_why ok)
  * A lost test core never returns from xts_core_xc_call (the core reports the crash/hang and halts). Host: roles,
@@ -20,8 +29,11 @@
 
 #define PINGS 10000
 #define SYNCS 1000
+#define DSYNC_WORDS 128                        /* 512 bytes: XTS_SCRATCH_BYTES, 4 cache lines */
 
-enum { C_ROLES, C_PING, C_HB, C_SYNC, C_SMT };
+enum { C_ROLES, C_PING, C_HB, C_SYNC, C_SMT, C_DSYNC };
+enum { D_C2T_READ, D_C2T_STORE, D_C2T_STAGED, D_T2C_PLAIN, D_T2C_STAGED, D_N };
+static const char *const dsync_names[D_N] = { "c2t_read", "c2t_store", "c2t_staged", "t2c_plain", "t2c_staged" };
 
 static int cores_enum(xts_caselist_t *cl)
 {
@@ -30,6 +42,12 @@ static int cores_enum(xts_caselist_t *cl)
     xts_case_t *c = xts_case_add(cl, names[i]);
     if (!c) return -1;
     c->arg[0] = i;
+  }
+  for (int i = 0; i < D_N; i++) {
+    xts_case_t *c = xts_case_addf(cl, "data_sync_%s", dsync_names[i]);
+    if (!c) return -1;
+    c->arg[0] = C_DSYNC;
+    c->arg[1] = i;
   }
   static const int pirs[] = { 1, 3, 5 };
   for (int i = 0; i < 3; i++) {
@@ -51,6 +69,44 @@ static void code_job(void *a, void *b)
 {
   uint32_t (*f)(void) = (uint32_t (*)(void))a;
   *(uint32_t *)b = f();
+}
+
+/* data_sync: the buffer and the round's job; each round's pattern is distinct in every word */
+static uint32_t dbuf[DSYNC_WORDS] __attribute__((aligned(128)));
+typedef struct dsync_job {
+  uint32_t round, mode, stale, sink;
+} dsync_job_t;
+static uint32_t dpat(uint32_t round, uint32_t i) { return (round * 0x9E3779B1u) ^ (i * 0x01000193u) ^ 0x5A5A0000u; }
+/* dcbf on THIS core only (xts_dcbf_range would also flush on the test core, which is what is being measured) */
+static void dflush(void)
+{
+  __sync_synchronize();
+#if defined(__powerpc__) || defined(__PPC__)
+  for (uint32_t o = 0; o < sizeof dbuf; o += 128) asm volatile("dcbf 0, %0" : : "r"((uint8_t *)dbuf + o) : "memory");
+#endif
+  __sync_synchronize();
+}
+/* test core, one round: (staged: drop own copy) read and count stale words, then warm the buffer for the next round the
+ * way the mode asks (read, or store the round's pattern back unchanged) */
+static void dsync_c2t_job(void *a, void *b)
+{
+  dsync_job_t *j = a;
+  (void)b;
+  if (j->mode == D_C2T_STAGED) dflush();
+  const volatile uint32_t *p = dbuf;
+  uint32_t stale = 0;
+  for (uint32_t i = 0; i < DSYNC_WORDS; i++) stale += p[i] != dpat(j->round, i);
+  j->stale = stale;
+  if (j->mode != D_C2T_READ)
+    for (uint32_t i = 0; i < DSYNC_WORDS; i++) ((volatile uint32_t *)dbuf)[i] = dpat(j->round, i);
+  __sync_synchronize();
+}
+static void dsync_t2c_job(void *a, void *b)
+{
+  dsync_job_t *j = a;
+  (void)b;
+  for (uint32_t i = 0; i < DSYNC_WORDS; i++) ((volatile uint32_t *)dbuf)[i] = dpat(j->round, i);
+  __sync_synchronize();
 }
 
 static int cmp_u32(const void *a, const void *b)
@@ -178,6 +234,48 @@ static int cores_run(const xts_case_t *c, xts_ctx_t *ctx)
     emit(ctx, bad ? XTS_ST_FAIL : XTS_ST_PASS, "count", bad, "count", &j);
     return 0;
   }
+  case C_DSYNC: {
+    int mode = (int)c->arg[1];
+    int must_pass = mode == D_C2T_STAGED || mode == D_T2C_STAGED;
+    if (ctx->host) { skip(ctx, "host: no second core", "count", "count"); return 0; }
+    static dsync_job_t dj __attribute__((aligned(128)));
+    int bad = 0, first_bad = -1;
+    uint32_t words = 0;
+    for (uint32_t k = 1; k <= SYNCS; k++) {
+      uint32_t stale = 0;
+      if (mode <= D_C2T_STAGED) {
+        for (uint32_t i = 0; i < DSYNC_WORDS; i++) ((volatile uint32_t *)dbuf)[i] = dpat(k, i);
+        dflush();                              /* what the exec engine does with scratch on the suite core */
+        memset(&dj, 0, sizeof dj);
+        dj.round = k;
+        dj.mode = (uint32_t)mode;
+        __sync_synchronize();
+        xts_core_xc_call(dsync_c2t_job, &dj, NULL);
+        dflush();                              /* dj itself: written on the test core */
+        stale = dj.stale;
+      } else {
+        const volatile uint32_t *p = dbuf;
+        uint32_t warm = 0;
+        for (uint32_t i = 0; i < DSYNC_WORDS; i++) warm += p[i];   /* the suite holds the lines (as after a result read) */
+        dj.round = k;
+        dj.sink = warm;
+        __sync_synchronize();
+        xts_core_xc_call(dsync_t2c_job, &dj, NULL);
+        if (mode == D_T2C_STAGED) dflush();
+        for (uint32_t i = 0; i < DSYNC_WORDS; i++) stale += p[i] != dpat(k, i);
+      }
+      if (stale) { bad++; words += stale; if (first_bad < 0) first_bad = (int)k; }
+    }
+    xj_kv_str(&j, "how", dsync_names[mode]);
+    xj_kv_int(&j, "rounds", SYNCS);
+    xj_kv_int(&j, "stale_rounds", bad);
+    xj_kv_uint(&j, "stale_words", words);
+    xj_kv_int(&j, "first_stale", first_bad);
+    xj_kv_bool(&j, "must_be_zero", must_pass);
+    xj_end(&j);
+    emit(ctx, must_pass ? (bad ? XTS_ST_FAIL : XTS_ST_PASS) : XTS_ST_INFO, "count", bad, "count", &j);
+    return 0;
+  }
   case C_SMT: {
     int pir = (int)c->arg[1];
     int r = xts_smt_start(pir, XTS_SMT_BUSY_INT, NULL, 0);
@@ -206,4 +304,4 @@ static int cores_run(const xts_case_t *c, xts_ctx_t *ctx)
 }
 
 XTS_FAMILY(self_cores, .kind = "self", .enumerate = cores_enum, .run = cores_run, .block_cases = 16,
-           .desc = "core runtime: role PIRs, remote-call latency, heartbeats, cross-core code sync, SMT exit self-check");
+           .desc = "core runtime: role PIRs, remote-call latency, heartbeats, cross-core code and data sync, SMT exit self-check");

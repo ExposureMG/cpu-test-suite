@@ -6,7 +6,14 @@
  * FPSCR/VSCR/VRSAVE, takes the timebase around xts_slot_run and reads the in-case trap record. The 0x600/0x700 stubs
  * record in-case traps in the HV context block of the thread that trapped (SPRG1); that is PIR 0's block, addressed
  * explicitly (xts_xc_test_ctx_real), never the caller's SPRG1. A crash or hang of the test core does not return here
- * (xts_core_xc_call -> xts_core_test_core_lost). xts_touch_range runs on the test core too (it is about ITS caches). */
+ * (xts_core_xc_call -> xts_core_test_core_lost). xts_touch_range runs on the test core too (it is about ITS caches).
+ *
+ * Data the two cores share (the input/output images, scratch, the job record, prepared big-buffer regions) is handed over
+ * with an explicit dcbf on BOTH sides: the semantic run on hardware showed the test core loading its own stale L1 copy of
+ * scratch after the suite had rewritten it and flushed it from the suite core (loads returned what an earlier store case
+ * left there, ~50% of all load cases). So a dcbf on the suite core does not reach the test core's L1. The writer flushes
+ * its copy, the reader drops its own (stage_job on the test core; the suite after the call) - all outside the timed part.
+ * self.cores data_sync_* measures the effect directly. */
 #include <stdio.h>
 #include <string.h>
 #include <ppc/cache.h>
@@ -31,7 +38,6 @@ static xts_state_t in_img __attribute__((aligned(128)));
 static xts_state_t out_img __attribute__((aligned(128)));
 static uint8_t scratch[XTS_SCRATCH_BYTES] __attribute__((aligned(128)));
 static int vectors_installed;
-static uint32_t rt_fpscr_before, rt_fpscr_after, rt_vscr_before, rt_vscr_after, rt_vrsave_before, rt_vrsave_after;
 
 int xts_exec_is_host(void) { return 0; }
 uint64_t xts_scratch_addr(void) { return (uint32_t)scratch; }
@@ -49,11 +55,21 @@ void xts_sync_code(void *addr, uint32_t len)
   asm volatile("isync" ::: "memory");
 }
 
-void xts_dcbf_range(void *addr, uint32_t len)
+static void dcbf_here(void *addr, uint32_t len)
 {
   asm volatile("sync" ::: "memory");
   memdcbf(addr, (int)len);
   asm volatile("sync" ::: "memory");
+}
+
+static void dcbf_job(void *a, void *b) { dcbf_here(a, (uint32_t)b); }
+
+/* out of every cache that can hold it: the suite core's (where the data was usually just written) AND the test core's
+ * (a dcbf on one core does not invalidate the other core's L1, see the top of this file) */
+void xts_dcbf_range(void *addr, uint32_t len)
+{
+  dcbf_here(addr, len);
+  if (xts_xc_mypir() != 0) xts_core_xc_call(dcbf_job, addr, (void *)len);
 }
 
 static void touch_job(void *a, void *b)
@@ -150,18 +166,39 @@ static uint32_t rd_vrsave(void)
   return v;
 }
 
-int xts_exec_runtime_intact(void)
-{
-  return rt_fpscr_before == rt_fpscr_after && rt_vscr_before == rt_vscr_after && rt_vrsave_before == rt_vrsave_after;
-}
-
-/* the timed part, on the test core (PIR 0) */
+/* the timed part, on the test core (PIR 0); written there, read by the suite after the call */
 typedef struct slot_job {
   uint64_t ticks;
   uint64_t srr0, srr1, dar;
   uint32_t vector;
+  uint32_t fpscr_before, fpscr_after, vscr_before, vscr_after, vrsave_before, vrsave_after;
 } slot_job_t;
-static slot_job_t job;
+static slot_job_t job __attribute__((aligned(128)));
+
+int xts_exec_runtime_intact(void)
+{
+  return job.fpscr_before == job.fpscr_after && job.vscr_before == job.vscr_after && job.vrsave_before == job.vrsave_after;
+}
+
+/* everything one case hands between the cores */
+static void flush_shared(void)
+{
+  memdcbf(&in_img, sizeof in_img);
+  memdcbf(&out_img, sizeof out_img);
+  memdcbf(scratch, sizeof scratch);
+  memdcbf(&job, sizeof job);
+  asm volatile("sync" ::: "memory");
+}
+
+/* on the test core, before the pre hooks (a cache-axis touch must come after it): drop its own copies of the shared
+ * buffers so the case loads what the suite just wrote */
+static void stage_job(void *a, void *b)
+{
+  (void)a;
+  (void)b;
+  asm volatile("sync" ::: "memory");
+  flush_shared();
+}
 
 static void slot_job(void *a, void *b)
 {
@@ -173,15 +210,15 @@ static void slot_job(void *a, void *b)
   ctx[80] = 0;
   ctx[81] = 0;
   asm volatile("sync" ::: "memory");
-  rt_fpscr_before = rd_fpscr();
-  rt_vscr_before = rd_vscr();
-  rt_vrsave_before = rd_vrsave();
+  j->fpscr_before = rd_fpscr();
+  j->vscr_before = rd_vscr();
+  j->vrsave_before = rd_vrsave();
   uint64_t t0 = xts_tb();
   xts_slot_run(&in_img, &out_img);
   j->ticks = xts_tb() - t0;
-  rt_fpscr_after = rd_fpscr();
-  rt_vscr_after = rd_vscr();
-  rt_vrsave_after = rd_vrsave();
+  j->fpscr_after = rd_fpscr();
+  j->vscr_after = rd_vscr();
+  j->vrsave_after = rd_vrsave();
   j->vector = (uint32_t)ctx[80];
   j->srr0 = ctx[36];
   j->srr1 = ctx[37];
@@ -196,12 +233,13 @@ static int run_prepared(xts_exec_t *x, uint64_t kernel_start, uint64_t kernel_by
   in_img.outptr = (uint32_t)&out_img;
   memset(&out_img, 0, sizeof out_img);
   memcpy(scratch, x->mem_in, XTS_SCRATCH_BYTES);
-  memdcbf(&in_img, sizeof in_img);
-  memdcbf(scratch, sizeof scratch);
-  asm volatile("sync" ::: "memory");
-  if (xts_exec_hooks_run_pre(x) < 0) return x->status;
   memset(&job, 0, sizeof job);
+  asm volatile("sync" ::: "memory");
+  flush_shared();                                    /* the suite's writes leave its caches */
+  if (xts_xc_mypir() != 0) xts_core_xc_call(stage_job, NULL, NULL);   /* the test core drops its stale copies */
+  if (xts_exec_hooks_run_pre(x) < 0) return x->status;
   xts_core_xc_call(slot_job, &job, NULL);            /* returns only with XTS_XC_OK (a lost test core never returns) */
+  flush_shared();                                    /* the suite drops its copies before reading the results */
   x->ticks = job.ticks;
   x->status = XTS_EXEC_OK;                           /* what the post hooks see */
   xts_exec_hooks_run_post(x);

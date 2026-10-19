@@ -363,7 +363,7 @@ FMOVE("fnabsx", m_fnabs, b | XD_SIGN);
 
 /* ---- FPSCR instructions ---- */
 #define FPSCR_EXC_BITS (XTS_FPSCR_FX | XTS_FPSCR_OX | XTS_FPSCR_UX | XTS_FPSCR_ZX | XTS_FPSCR_XX | XTS_FPSCR_VX_ALL)
-#define FPSCR_UNSETTABLE (XTS_FPSCR_NI | 0x00000800u)   /* Xenon: NI cannot be set; bit 20 is reserved */
+#define FPSCR_UNSETTABLE (XTS_FPSCR_NI | XTS_FPSCR_RSVD20)   /* Xenon: neither can be set (xm_fpscr_loaded) */
 
 /* FEX/VX are summaries; FX as given */
 static uint32_t fpscr_settle(uint32_t f) { return xm_fpscr_merge(f & ~FPSCR_UNSETTABLE, 0); }

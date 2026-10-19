@@ -130,6 +130,7 @@ int xm_add_ca(uint64_t a, uint64_t b, int cin, int sf);
 #define XTS_FPSCR_FI     0x00020000u
 #define XTS_FPSCR_FPRF   0x0001F000u
 #define XTS_FPSCR_VXSOFT 0x00000400u
+#define XTS_FPSCR_RSVD20 0x00000800u   /* reserved; cannot be set on Xenon (xm_fpscr_loaded) */
 #define XTS_FPSCR_VXSQRT 0x00000200u
 #define XTS_FPSCR_VXCVI  0x00000100u
 #define XTS_FPSCR_VE     0x00000080u
@@ -154,7 +155,7 @@ uint32_t xm_fpscr_merge(uint32_t fpscr, uint32_t new_exc);
 uint32_t xm_fprf_f64(uint64_t bits);
 
 /* The state the CPU actually holds after the slot loaded an input image (mtfsf 0xFF: FEX/VX recomputed; Xenon cannot
- * set FPSCR[NI]; mtvscr keeps only NJ/SAT). xts_model_exec applies this to its input before anything else. */
+ * set FPSCR[NI] or reserved bit 20; mtvscr keeps only NJ/SAT). xts_model_exec applies this to its input before anything else. */
 uint32_t xm_fpscr_loaded(uint32_t fpscr);
 void xm_state_loaded(xts_state_t *s);
 

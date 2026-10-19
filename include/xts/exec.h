@@ -127,7 +127,9 @@ void xts_set_big_ptr(xts_exec_t *x, int r, uint32_t off);   /* r = big buffer ad
 /* Prepare a big-buffer region (port of the runner's hp_prep): returns <0 for bad parameters.
  *   mode 0: `ncycles` disjoint random pointer cycles (Sattolo) over elements of `stride` bytes, u64 pointer at slot8*8
  *   mode 1: sequential cycles (successor of i is i+ncycles)      mode 2: zero    mode 3: dcbf    mode 4: touch
- *   mode 5: xorshift word fill;  | XTS_PREP_DCBF: dcbf afterwards,  | XTS_PREP_TOUCH: then touch every line */
+ *   mode 5: xorshift word fill;  | XTS_PREP_DCBF: dcbf afterwards,  | XTS_PREP_TOUCH: then touch every line (on the test core)
+ * Every mode except 4 ends with xts_dcbf_range over the region (the suite's writes must reach the test core; XTS_PREP_DCBF
+ * is implied), so a prepared region is cold unless XTS_PREP_TOUCH re-warms it. */
 #define XTS_PREP_DCBF  0x80
 #define XTS_PREP_TOUCH 0x40
 int xts_prep(uint32_t base, uint32_t nelem, uint32_t stride, int mode, int ncycles, uint32_t seed, int slot8);
@@ -163,7 +165,9 @@ uint64_t xts_exec_kernel_addr(void);       /* start of the kernel buffer */
 uint32_t xts_exec_kernel_capacity(void);   /* words */
 int xts_exec_is_host(void);
 
-/* Cache maintenance for generated code / data (console: dcbst/sync/icbi/isync; host: no-op) */
+/* Cache maintenance for generated code / data (console: dcbst/sync/icbi/isync; host: no-op). xts_dcbf_range flushes on the
+ * calling core AND on the test core (a dcbf on one core does not invalidate the other's L1); xts_touch_range touches on the
+ * test core. */
 void xts_sync_code(void *addr, uint32_t len);
 void xts_dcbf_range(void *addr, uint32_t len);
 void xts_touch_range(const void *addr, uint32_t len);

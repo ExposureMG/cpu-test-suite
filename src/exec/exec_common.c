@@ -246,7 +246,9 @@ int xts_prep(uint32_t base, uint32_t nelem, uint32_t stride, int mode, int ncycl
   int m = xts_prep_pure(big, (uint32_t)addr, big_bytes, base, nelem, stride, mode, ncycles, seed, slot8, &span);
   if (m < 0) return -1;
   int op = m & 15;
-  if ((m & XTS_PREP_DCBF) || op == 3) xts_dcbf_range(big + base, (uint32_t)span);
+  /* written by the suite core: always flushed on both cores so the test core cannot load a stale L1 copy (exec_console.c)
+   * - a region the suite wrote is therefore never cache-warm on the test core unless XTS_PREP_TOUCH asks for it */
+  if ((m & XTS_PREP_DCBF) || op != 4) xts_dcbf_range(big + base, (uint32_t)span);
   if ((m & XTS_PREP_TOUCH) || op == 4) xts_touch_range(big + base, (uint32_t)span);
   return 0;
 }
