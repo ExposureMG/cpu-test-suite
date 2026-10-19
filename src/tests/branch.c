@@ -4,7 +4,8 @@
  *   tk_bc.d<n> tk_b.d<n>   taken conditional / unconditional branch over n skipped words: the taken-branch bubble per distance
  *   mispredict      xorshift64 sign branch (50 % mispredicts) against the same code with the branch never / always taken:
  *                   penalty = 2*rand - never - always  (needs no assumption about the cost of a taken branch or of addi)
- *                   The random kernel uses a 3 % fit-residual limit (its mispredicts scatter per depth).
+ *                   The random kernel uses a 3 % fit-residual and a 4 % spread / A/B/A limit (which branches mispredict
+ *                   depends on the predictor state earlier runs left).
  *   pattern.p<n>    branch direction from a rotating 64-bit pattern of period n: extra cost over the predictable mean and an
  *                   estimate of the mispredict rate, relative to the random reference (how long a history is learned)
  *   bctr.d<n> bclr.d<n>   register branch after mtctr / mtlr with n independent addi in between (n = 0,2,4,8,16,32): the
@@ -334,10 +335,14 @@ static int run_bp(meas_t *m, xts_ctx_t *ctx, bp_t *p, const char *unit, double e
      * align the line placement, bht/call depth means history / call depth: those keep their layout. */
     xts_time_line_layout(&m->s, 1);
   }
-  /* the random-outcome kernel (xorshift sign branch, ~50 % mispredicts): which branches mispredict differs from depth
-   * to depth, so its per-depth cost scatters by a few percent however repeatable each run is (sched run 2026-10-19:
-   * 27.3-28.7 cycles per step, residual 1.06 %). A 3 % residual limit for it alone; never/always keep the default 1 %. */
-  if (p->kind == K_LCG && p->a == 0) m->s.resid_limit = 0.03;
+  /* the random-outcome kernel (xorshift sign branch, ~50 % mispredicts): which branches mispredict depends on the
+   * predictor state earlier runs left, so its cost scatters by a few percent between depths and between runs of the
+   * same depth (sched runs 2026-10-19: 27.3-28.7 cycles per step, residual 1.06 %; A/B/A -2.56 % once the residual
+   * passed). For it alone a 3 % residual limit and a 4 % spread / A/B/A limit; never/always keep 1 % and 2 %. */
+  if (p->kind == K_LCG && p->a == 0) {
+    m->s.resid_limit = 0.03;
+    m->s.spread_limit = 0.04;
+  }
   return mrun(m, ctx);
 }
 
