@@ -201,6 +201,29 @@ int xts_crash_report_json(char *buf, int cap, const xts_xc_crash_t *s)
   return j.len;
 }
 
+int xts_suite_hang_report_json(char *buf, int cap, uint64_t stalled_ms)
+{
+  xts_json_t j;
+  xj_init(&j, buf, cap);
+  xj_obj(&j);
+  xj_kv_int(&j, "pir", XTS_PIR_SUITE);
+  xj_kv_str(&j, "reporter", "transmitter");
+  xj_kv_str(&j, "note", "the suite core stopped: its heartbeat stalled (no crash slot)");
+  xj_kv_uint(&j, "stalled_ms", stalled_ms);
+  xj_key(&j, "heartbeats");
+  xj_obj(&j);
+  static const int pirs[] = { XTS_PIR_TEST, XTS_PIR_SUITE, XTS_PIR_NET };
+  for (int i = 0; i < 3; i++) {
+    char k[4] = { (char)('0' + pirs[i]), 0 };
+    xj_kv_uint(&j, k, xts_xc_heartbeat(pirs[i]));
+  }
+  xj_end(&j);
+  xj_kv_bool(&j, "measuring", xts_xc_measuring());
+  common_tail(&j);
+  xj_finish(&j);
+  return j.len;
+}
+
 int xts_hang_report_json(char *buf, int cap, uint32_t timeout_us)
 {
   xts_json_t j;

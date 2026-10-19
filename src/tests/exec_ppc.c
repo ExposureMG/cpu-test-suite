@@ -121,6 +121,9 @@ static int exec_enumerate(xts_caselist_t *cl)
         is_mnem(d, "stswx")) {
       for (int k = 0; k < XE_DRAWS; k++)
         if (!add(cl, d, KG_STR, 0, k, 0, 0, "%s#%d", d->mnem, k)) return -1;
+      if (is_mnem(d, "lswx") || is_mnem(d, "stswx"))       /* XER byte count 0: lswx leaves RT undefined (KNOWN.md) */
+        for (int k = 0; k < 8; k++)
+          if (!add(cl, d, KG_STR, 0, k, 1, 0, "%s.count0#%d", d->mnem, k)) return -1;
       continue;
     }
     if (is_mnem(d, "stwcx") || is_mnem(d, "stdcx")) {
@@ -334,6 +337,7 @@ static int run_str(const xts_case_t *c, xts_ctx_t *ctx)
       rb = 4 + (int)xts_rng_below(r, 9);
       while (rb == ra) rb = 4 + (int)xts_rng_below(r, 9);
       bytes = xe_pct(r, 60) ? nb[xts_rng_below(r, XE_N(nb))] : (int)xts_rng_below(r, 33);
+      if (c->arg[1] == 1) bytes = 0;                       /* .count0 cases: XER[25:31] = 0 */
       banned |= 1u << rb;
     } else {
       int n5 = xe_pct(r, 60) ? nb[xts_rng_below(r, XE_N(nb))] & 31 : (int)xts_rng_below(r, 32);

@@ -85,6 +85,9 @@ void xts_crash_log_tail_json(struct xts_json *j);    /* ["line", ...] oldest fir
  * Payload formats: docs/PROTOCOL.md. */
 int xts_crash_report_json(char *buf, int cap, const xts_xc_crash_t *slot);
 int xts_hang_report_json(char *buf, int cap, uint32_t timeout_us);
+/* HANG report for the SUITE core, built by the transmitter when the suite's heartbeat stalled (pir 2, stalled_ms,
+ * heartbeats, the last breadcrumb and log lines). Reads only RAM the suite wrote. */
+int xts_suite_hang_report_json(char *buf, int cap, uint64_t stalled_ms);
 
 /* The test core is gone (xts_xc_call returned XTS_XC_TIMEOUT / XTS_XC_CRASHED / XTS_XC_DOWN). Called by the exec layer
  * (or anything else that hands work to the test core) on the suite core. Emits a hang/crash record for the current case

@@ -30,7 +30,8 @@ family) is either fixed in the model or recorded here with its evidence.
 - **lswx with XER byte count 0** (second semantic run, word 7F055C2A = lswx r24,r5,r11, SF=0, EA = scratch+0x84): the
   model leaves RT unchanged (architecturally undefined), the CPU returned 0x00000000BB000000 - the byte at EA in the top
   byte of the low word, as if one byte were loaded. One case; the run's other count-0 cases (if any) passed but carry no
-  detail. Not changed in the model yet: needs targeted count-0 cases (several EAs, RT values, SF=0/1).
+  detail. Not changed in the model yet: exec.ppc lswx.count0#0-7 (and stswx.count0 as a control) now run targeted
+  count-0 cases at several EAs and RT values, under both SF settings of the semantic profile.
 - **vmsum4fp128 1-ULP case (smoke run vmsum4fp128#12): resolved** by the semantic run of 2026-10-19 - the one's
   complement sum's reference sign is the majority product sign, not the first product's (that case has three negative
   products, so the positive tiny one costs one LSB). See "vmx128 (mvmx)".

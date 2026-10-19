@@ -162,3 +162,16 @@ HTEST(net_self_crash_family)
   res = ht_run_file(rd, "results.jsonl");
   HT_CHECK(res && strstr(res, "\"case_id\":\"crash\"") && ht_count_substr(res, "\"status\":\"skip\"") == 1);
 }
+
+/* the transmitter's report for a stopped suite core: pir 2, the stall, heartbeats and the last breadcrumb */
+HTEST(net_suite_hang_json)
+{
+  xts_crumb_block("r3:t.suitehang:-:c0", "t.suitehang", "mem", 16);
+  xts_crumb_case(0, 5, 0, "s05", "ld", 42, 7);
+  static char buf[4096];
+  int n = xts_suite_hang_report_json(buf, sizeof buf, 12345);
+  HT_CHECK(n > 0 && n < (int)sizeof buf);
+  HT_CHECK(strstr(buf, "\"pir\":2") && strstr(buf, "\"reporter\":\"transmitter\"") && strstr(buf, "\"stalled_ms\":12345"));
+  HT_CHECK(strstr(buf, "\"heartbeats\":{") && strstr(buf, "\"case_id\":\"s05\"") &&
+           strstr(buf, "\"block\":\"r3:t.suitehang:-:c0\""));
+}

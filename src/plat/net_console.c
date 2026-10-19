@@ -38,6 +38,7 @@
 #include <xts/net.h>
 #include <xts/xcore.h>
 #include <core/netfmt.h>
+#include <core/core.h>              /* xts_suite_hang_report_json */
 /* XTS_NET_OWN_DRIVER (make NET_DRIVER=own): XTS's own TX-only descriptor driver below. Default (0): frames go through
  * libxenon's own driver (drivers/lwip/xenon/netif/enet.c: enet_init/enet_open + its linkoutput), the code proven to
  * transmit on hardware - XTS's own driver had every descriptor complete without a frame ever reaching the network
@@ -658,6 +659,21 @@ static void report_suite_crash(void)
   xts_net_send(XTS_PK_CRASH, buf, (uint32_t)(o - buf));
 }
 
+/* suite watchdog: between HELLO and END the suite core beats at least every ~1 ms (xts_xc_call's wait loop) or with every
+ * call; XTS_NET_SUITE_STALL_MS without a beat (no crash slot) means it stopped - a livelock or a loop that never returns,
+ * which nobody else could report. Far above any legitimate pause (calib's 2 s RTC interval, 2 s ring waits). */
+#ifndef XTS_NET_SUITE_STALL_MS
+#define XTS_NET_SUITE_STALL_MS 10000
+#endif
+static int run_live, run_ended, suite_stall_reported;
+
+static void report_suite_hang(uint64_t stalled_ticks)
+{
+  static char buf[4096];
+  int n = xts_suite_hang_report_json(buf, sizeof buf, stalled_ticks * 1000u / xts_xc_us_ticks(1000000u));
+  xts_net_send(XTS_PK_HANG, buf, (uint32_t)n);
+}
+
 static int tx_one_message(void)
 {
   uint32_t tail = q->tail, pos = tail & (XTS_NET_RING_BYTES - 1);
@@ -669,6 +685,8 @@ static int tx_one_message(void)
     return 1;
   }
   uint32_t type = e[1], len = e[2], msg = e[3], seq = e[4], frags = e[5];
+  if (type == XTS_PK_HELLO) run_live = 1;
+  if (type == XTS_PK_END) run_ended = 1;
   if (n < ENT_HDR || n > ENT_HDR + XTS_NET_MAX_MESSAGE + 8 || len > XTS_NET_MAX_MESSAGE ||
       frags != xts_netfmt_frag_count(len) || n > XTS_NET_RING_BYTES - pos) {
     q->send_failures = q->send_failures + 1;             /* corrupt entry: drop everything queued so far */
@@ -710,6 +728,16 @@ void xts_netc_tx_main(void)
       q->crash_reported = 1;
       report_suite_crash();
       continue;
+    }
+    if (run_live && !run_ended && !suite_stall_reported && !q->crash_reported) {
+      static uint64_t hb_val, hb_tb;
+      uint64_t hb = xts_xc_heartbeat(XTS_PIR_SUITE), t = xts_xc_tb();
+      if (hb != hb_val || !hb_tb) { hb_val = hb; hb_tb = t; }
+      else if (t - hb_tb > xts_xc_us_ticks((uint64_t)XTS_NET_SUITE_STALL_MS * 1000u)) {
+        suite_stall_reported = 1;                          /* the suite cannot: the transmitter reports it */
+        report_suite_hang(t - hb_tb);
+        continue;
+      }
     }
     xts_xc_prio_low();                                    /* idle: ~20 us between uncached polls */
     xts_xc_spin_ticks(1000);

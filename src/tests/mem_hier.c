@@ -61,7 +61,7 @@ static const char *const cop_states[] = { "resident", "after_store", "cold_strea
 static const int pf_ops[] = { -1, XI_dcbt, XI_dcbtst, XI_xdcbt };
 
 #define WARM_MAX (8u * MU_MB)
-#define STEPS 8192u              /* deepest default depth (32) x 256 iterations */
+#define STEPS 8192u              /* >= elements one run touches: old layout 32 x 256, line layout 192 x 32 */
 
 /* per boot, per other_cores value: the random-chase points measured so far (for the chase.seq ratio and for finish()) */
 static double rand_pts[8][NRAND];
@@ -90,6 +90,10 @@ static double chase_point(xts_ctx_t *ctx, uint32_t base, uint32_t n, uint32_t st
   if (mu_chain_build(&hc) < 0) { *err = -3; return NAN; }
   *s = (xts_tspec_t)XTS_TSPEC_DEFAULT;
   s->unit = random ? "ld r3,0(r3) random cycle" : "ld r3,0(r3) sequential cycle";
+  /* the chain is cyclic and its length is n, not the depth: the line layout (xts/timing.h) is safe here. A run touches at
+   * most 192 x 32 = 6144 elements (< STEPS), so the cold rotation still starts every run on untouched elements. The
+   * streams and cache-op kernels size their buffer from depth x iters and keep the old layout. */
+  s->line_layout = 1;
   return mu_chase_measure(ctx, &hc, warm, 0, rotate, s, r);
 }
 

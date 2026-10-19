@@ -235,6 +235,10 @@ static void executor_loop(void)
   }
 }
 
+/* while it waits on the test core the suite beats about once a millisecond (one uncached store), so the transmitter's
+ * suite watchdog (net_console.c) can tell a long measurement from a stopped suite core */
+#define XC_SUITE_BEAT_TICKS xts_xc_us_ticks(1000)
+
 int xts_xc_call(void (*fn)(void *, void *), void *a, void *b, uint32_t timeout_us)
 {
   if (!fn) return XTS_XC_OK;
@@ -254,7 +258,7 @@ int xts_xc_call(void (*fn)(void *, void *), void *a, void *b, uint32_t timeout_u
   xs->req.v[0] = seq;
   asm volatile("sync" ::: "memory");
   const volatile uint32_t *crash0 = (const volatile uint32_t *)(crash_base + XC_CRASH_VALID);
-  uint64_t t0 = xts_xc_tb(), lim = xts_xc_us_ticks(timeout_us), fast = xts_xc_us_ticks(20);
+  uint64_t t0 = xts_xc_tb(), lim = xts_xc_us_ticks(timeout_us), fast = xts_xc_us_ticks(20), beat_t = t0;
   int r = XTS_XC_OK;
   xts_xc_prio_low();                                         /* the suite is idle while the test core works */
   for (uint32_t n = 0;; n++) {
@@ -265,6 +269,10 @@ int xts_xc_call(void (*fn)(void *, void *), void *a, void *b, uint32_t timeout_u
     /* first 20 us: poll every ~0.3 us (no-op calls return fast); then every ~5 us so the uncached reads add almost
      * no bus traffic to a long measurement */
     xts_xc_spin_ticks(dt < fast ? 16 : 250);
+    if (dt - (beat_t - t0) > XC_SUITE_BEAT_TICKS) {      /* the suite stays visibly alive through a long measurement */
+      beat_t = t0 + dt;
+      xts_xc_beat(XTS_PIR_SUITE);
+    }
   }
   xts_xc_prio_medium();
   if (r != XTS_XC_OK && xs->done.v[0] == seq && !*crash0) r = XTS_XC_OK;   /* finished right at the deadline */
