@@ -231,7 +231,8 @@ int xts_glob(const char *p, const char *s)
 
 const char *xts_status_name(int st)
 {
-  static const char *const n[XTS_ST_COUNT] = { "pass", "fail", "trap", "skip", "noisy", "regressed", "hang", "crash", "info" };
+  static const char *const n[XTS_ST_COUNT] = { "pass", "fail", "trap", "skip", "noisy", "regressed", "hang", "crash", "info",
+                                               "nonlinear" };
   return (st >= 0 && st < XTS_ST_COUNT) ? n[st] : "?";
 }
 
@@ -242,12 +243,12 @@ int xts_status_from_name(const char *name)
   return -1;
 }
 
-/* crash > hang > fail > trap > noisy > regressed > skip > info > pass */
+/* crash > hang > fail > trap > noisy > nonlinear > regressed > skip > info > pass */
 int xts_status_rank(int st)
 {
   static const int8_t rank[XTS_ST_COUNT] = { [XTS_ST_PASS] = 0, [XTS_ST_INFO] = 1, [XTS_ST_SKIP] = 2, [XTS_ST_REGRESSED] = 3,
-                                            [XTS_ST_NOISY] = 4, [XTS_ST_TRAP] = 5, [XTS_ST_FAIL] = 6, [XTS_ST_HANG] = 7,
-                                            [XTS_ST_CRASH] = 8 };
+                                            [XTS_ST_NONLINEAR] = 4, [XTS_ST_NOISY] = 5, [XTS_ST_TRAP] = 6, [XTS_ST_FAIL] = 7,
+                                            [XTS_ST_HANG] = 8, [XTS_ST_CRASH] = 9 };
   return (st >= 0 && st < XTS_ST_COUNT) ? rank[st] : -1;
 }
 

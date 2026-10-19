@@ -51,10 +51,21 @@ HTEST(fit_math)
   xts_time_gate(&s, &res);
   HT_EQ_U64(res.status, XTS_ST_NOISY);
   res.mad[2] = 0;
-  res.median[3] *= 1.05;                                     /* a bent point: residual too big */
+  res.median[3] *= 1.05;                                     /* a bent but repeatable point: structure, not noise */
   xts_fit_line(x, res.median, s.ndepths, &res.fit);
   xts_time_gate(&s, &res);
+  HT_EQ_U64(res.status, XTS_ST_NONLINEAR);
+  HT_CHECK(res.resid_over_noise >= XTS_NONLINEAR_FACTOR);
+  for (int d = 0; d < s.ndepths; d++) res.mad[d] = 0.012 * res.median[d];   /* same bend inside the repeat spread */
+  xts_time_gate(&s, &res);
   HT_EQ_U64(res.status, XTS_ST_NOISY);
+  for (int d = 0; d < s.ndepths; d++) res.mad[d] = 0;          /* MAD 0: the 1/iters tick floor still applies */
+  res.aba_shift = 0.05;                                      /* but a regime shift is noise */
+  xts_time_gate(&s, &res);
+  HT_EQ_U64(res.status, XTS_ST_NOISY);
+  res.aba_shift = 0;
+  xts_time_gate(&s, &res);
+  HT_EQ_U64(res.status, XTS_ST_NONLINEAR);
   double base;
   HT_EQ_U64(xts_time_baseline_check(XI_addx, "latency", 2.02, 0.1, &base), XTS_ST_PASS);
   HT_EQ_U64(xts_time_baseline_check(XI_addx, "latency", 3.0, 0.1, &base), XTS_ST_REGRESSED);

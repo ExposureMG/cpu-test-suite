@@ -19,8 +19,10 @@ Families read (metric names / detail keys as their emitters write them):
 Rules:
     * records are deduplicated on (console_tag, run_id, seq) like xts_merge (identical copy dropped, differing copy = conflict,
       first kept); host dry-run data is refused unless --allow-host (it carries no measurements anyway).
-    * status filter: pass, regressed (timing gate passed, only the JSON baseline disagrees) and info (kept, flagged: e.g.
-      front-end bound = upper bound) by default; --include-noisy adds noisy; --statuses sets the list explicitly.
+    * status filter: pass, nonlinear (repeatable, but the cost per unit depends on the depth: the value is the
+      least-squares average, fit.marginal_cycles has the steps), regressed (timing gate passed, only the JSON baseline
+      disagrees) and info (kept, flagged: e.g. front-end bound = upper bound) by default; --include-noisy adds noisy;
+      --statuses sets the list explicitly.
     * condition sections: "default" = every axis at its default value (values[0] of src/conds), except the axes a family
       measures along (ldst.lat: cache, data_align; lat.data: vscr_nj; calib: speed), which become keys inside the model.
       Every other condition vector gets its own section under "conditions", and ratios against default under
@@ -52,7 +54,7 @@ sys.path.insert(0, HERE)
 import xts_merge as XM  # noqa: E402  (same directory: find_runs, read_lines, load_run, host detection)
 
 TOOL_VERSION = 1
-DEFAULT_STATUSES = ("pass", "regressed", "info")
+DEFAULT_STATUSES = ("pass", "nonlinear", "regressed", "info")
 MEASURE_FAMILIES = ("lat.chain", "tput.indep", "lat.data", "ucode", "issue.pair", "unit.conflict", "bypass.matrix", "branch",
                     "sysops", "calib", "ldst.lat", "mem.hier")
 # axes a family measures ALONG (their value is a key inside the model, not a separate condition section)
@@ -414,7 +416,7 @@ class Builder(object):
                 e["rt_upper"].append(r)
             e["rc"] = r.det.get("class") or e["rc"]
             for p in r.det.get("curve") or []:
-                if isinstance(p, dict) and p.get("status") in ("pass", "regressed", "info") and fnum(p.get("cycles")) is not None:
+                if isinstance(p, dict) and p.get("status") in DEFAULT_STATUSES and fnum(p.get("cycles")) is not None:
                     e["curve"][int(p.get("n", 0))].append((r, fnum(p.get("cycles"))))
             if r.det.get("n_sat") not in (None, -1):
                 e["nsat"].append(r.det.get("n_sat"))
@@ -1460,6 +1462,7 @@ def coverage(recs, model, isa, ctx):
     cov = OrderedDict(
         records=len(recs), measurement_records=len(meas), usable_measurements=len(usable),
         statuses=dict(st), noisy_fraction=rnd(st.get("noisy", 0) / float(len(meas))) if meas else None,
+        nonlinear_fraction=rnd(st.get("nonlinear", 0) / float(len(meas))) if meas else None,
         skip_fraction=rnd(st.get("skip", 0) / float(len(meas))) if meas else None,
         families_present=OrderedDict((f, fam[f]) for f in sorted(fam)),
         families_missing=[f for f in MEASURE_FAMILIES if not any(r.family == f for r in recs)],
@@ -1524,8 +1527,9 @@ def print_summary(doc, out, td, ppc):
         p("no measurements: %d measurement records, none usable (statuses %s) - host dry run or nothing executed" % (
             cov["measurement_records"], " ".join("%s=%d" % kv for kv in sorted(cov["statuses"].items())) or "-"))
     else:
-        p("usable measurements %d of %d (noisy %.1f %%, skip %.1f %%)" % (cov["usable_measurements"], cov["measurement_records"],
-                                                                       100 * (cov["noisy_fraction"] or 0), 100 * (cov["skip_fraction"] or 0)))
+        p("usable measurements %d of %d (nonlinear %.1f %%, noisy %.1f %%, skip %.1f %%)" % (
+            cov["usable_measurements"], cov["measurement_records"], 100 * (cov["nonlinear_fraction"] or 0),
+            100 * (cov["noisy_fraction"] or 0), 100 * (cov["skip_fraction"] or 0)))
     p("instructions (of %d user ISA): latency %d, rthroughput %d, issue cost %d, ucode verdict %d (%d microcoded), data bins %d, "
       "loads %d" % (cov["isa_user_instructions"], cov["instructions_with_latency"], cov["instructions_with_rthroughput"],
                     cov["instructions_with_issue_cost"], cov["instructions_with_ucode_verdict"], len(cov["microcoded"]),

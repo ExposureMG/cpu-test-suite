@@ -84,7 +84,9 @@ XTS_FAMILY(exec_altivec, .kind = "semantic", .axes = "sf,vscr_nj", .enumerate = 
   `body(k, depth, arg)` that emits `depth` units, optional `pre`/`setup` (or `setup2(x, depth, run, arg)`);
   `xts_time_measure` -> `xts_time_emit_ex(ctx, &spec, &res, XI_..., &(xts_temit_t){ .metric = "latency" })` (see "Timing
   records"). r27-r29 are the frame's (and, with `.loop = XTS_LOOP_GPR`, CR field `.loop_crf`; CTR is then the body's).
-  `xts_time_differential` does same-shape filler differentials. Status is `noisy` unless spread < 2 % and residual < 1 %;
+  `xts_time_differential` does same-shape filler differentials. Status is `pass` if spread and A/B/A shift < 2 % and
+  residual < 1 %; `nonlinear` if only the residual is over and it is at least 5x the largest per-depth MAD (repeatable
+  structure: the value is the least-squares average, `fit.marginal_cycles` the cost of each depth step); else `noisy`;
   `regressed` if the JSON baseline is off by more than 10 %. `xts_cycles_per_tick` (default 64) is set by the calib family.
 - Constants into registers: `xk_li64(k, r, v)` (any 64-bit value, `xts/kgen.h`), `xk_li32` (zero-extended), `xk_li32s`
   (sign-extended). Barriers: `XI_lwsync`, `XI_ptesync` are encoder aliases of `sync` (L=1/2).
@@ -189,7 +191,7 @@ HTEST(my_model_bits) { HT_EQ_U64(xts_enc(XI_addx, 0, 3, 4, 5), 0x7C642A14); HT_C
 | `block` | key of the scheduler block (`r<row>:<family>:<applied axes or ->:c<chunk>`) |
 | `metric`, `value`, `unit` | what was measured (`result`, `latency`, ...), number or null, unit |
 | `n`, `min`, `median`, `mad`, `fit_r2` | statistics, null when not applicable |
-| `status` | `pass fail trap skip noisy regressed hang crash info`; combined with `xts_status_worst`: crash > hang > fail > trap > noisy > regressed > skip > info > pass |
+| `status` | `pass fail trap skip noisy nonlinear regressed hang crash info`; combined with `xts_status_worst`: crash > hang > fail > trap > noisy > nonlinear > regressed > skip > info > pass |
 | `detail` | family-defined object; semantic failures carry inputs, CPU result, model result and every differing item; `"truncated":true` is added if it did not fit |
 
 The console sends only results.jsonl lines (REC messages); the receiver writes `results.csv` (same columns, detail
@@ -235,7 +237,7 @@ xts_time_emit_ex(ctx, &s, &r, XI_addx, &(xts_temit_t){
     .word = w,                      /* instruction word of the record, 0 = none */
     .extra_json = "{\"producer\":\"addx\",\"consumer\":\"addx\"}",   /* members copied to the front of detail */
     .detail_fn = my_members, .detail_arg = p,                       /* or write members yourself */
-    .floor = 1.0, .no_negative = 1, /* implausible pass values -> noisy */
+    .floor = 1.0, .no_negative = 1, /* implausible pass / nonlinear values -> noisy */
     .status = XTS_ST_INFO });       /* combined with xts_status_worst (0 = no effect) */
 xts_time_emit_ex(ctx, &s, &r, insn, &(xts_temit_t){ .metric = "penalty", XTS_TE_VALUE(p) });   /* value override */
 xts_time_emit_diff(ctx, &sa, &ra, &sb, &rb, insn, &(xts_temit_t){ .metric = "extra" });      /* (a - b) / per_unit */
@@ -248,7 +250,7 @@ Rules (the same for all three):
   the fit's r2 (the smaller one for diffs).
 - `status` = the measurement's status (`fail` when `r.failed`: kernel build / setup / exec error, with `"error"`), diffs
   take the worse of both; then the baseline check (only from pass; `regressed` when off by more than `baseline_tol`,
-  default 10 %); then `floor` / `no_negative` (pass -> noisy, `"implausible"`); then `xts_status_worst(status, e.status)`.
+  default 10 %); then `floor` / `no_negative` (pass or nonlinear -> noisy, `"implausible"`); then `xts_status_worst(status, e.status)`.
 - `unit` defaults to `cycles`; `mnem` is `xts_isa[insn]` (`insn` -1: the case's).
 - Detail = `{<extra_json members>, <detail_fn members>, "fit":{...}, ["ref":{...}], ["baseline":b, "baseline_key":k],
   ["implausible":why, "floor":f], ["error":why]}`.

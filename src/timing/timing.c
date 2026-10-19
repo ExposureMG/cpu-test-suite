@@ -179,6 +179,7 @@ void xts_time_fit_json(xts_json_t *j, const char *key, const xts_tspec_t *s, con
   xj_kv_double(j, "spread", ok ? r->spread_max : NAN);
   xj_kv_double(j, "aba_shift", ok ? r->aba_shift : NAN);
   xj_kv_double(j, "slope_se", ok ? r->slope_se : NAN);
+  xj_kv_double(j, "resid_over_noise", ok ? r->resid_over_noise : NAN);
   xj_key(j, "depths");
   xj_arr(j);
   for (int d = 0; d < nd; d++) xj_int(j, s->depths[d]);
@@ -190,6 +191,14 @@ void xts_time_fit_json(xts_json_t *j, const char *key, const xts_tspec_t *s, con
   xj_key(j, "ticks_mad");
   xj_arr(j);
   for (int d = 0; d < nd; d++) xj_double(j, ok ? r->mad[d] : NAN);
+  xj_end(j);
+  /* cost of each depth step (cycles per unit, divided by per_unit like the record value): what a nonlinear fit averages */
+  xj_key(j, "marginal_cycles");
+  xj_arr(j);
+  for (int d = 0; d + 1 < nd; d++) {
+    int dd = s->depths[d + 1] - s->depths[d];
+    xj_double(j, ok && dd > 0 ? (r->median[d + 1] - r->median[d]) / dd * xts_cycles_per_tick / (per_unit > 0 ? per_unit : 1.0) : NAN);
+  }
   xj_end(j);
   xj_kv_double(j, "cycles_per_tick", xts_cycles_per_tick);
   xj_kv_double(j, "per_unit", per_unit > 0 ? per_unit : 1.0);
@@ -248,12 +257,13 @@ static void emit_core(xts_ctx_t *ctx, const emit_in_t *in, const xts_temit_t *e)
       if (b == XTS_ST_REGRESSED) status = XTS_ST_REGRESSED;
     }
   }
-  if (status == XTS_ST_PASS && !isnan(value) && e->floor > 0 && value < e->floor * 0.97) {
+  int measured = status == XTS_ST_PASS || status == XTS_ST_NONLINEAR;   /* implausible values downgrade both */
+  if (measured && !isnan(value) && e->floor > 0 && value < e->floor * 0.97) {
     status = XTS_ST_NOISY;
     xj_kv_str(&j, "implausible", "below the physical floor");
     xj_kv_double(&j, "floor", e->floor);
   }
-  if (status == XTS_ST_PASS && !isnan(value) && e->no_negative && value < -0.5) {
+  if (measured && status != XTS_ST_NOISY && !isnan(value) && e->no_negative && value < -0.5) {
     status = XTS_ST_NOISY;
     xj_kv_str(&j, "implausible", "negative cost");
   }

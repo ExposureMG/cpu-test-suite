@@ -28,11 +28,11 @@ static void cap_end(void) { xts_sink_tap = NULL; xts_sink_discard(); }
 
 HTEST(fw2_status_worst)
 {
-  static const int order[] = { XTS_ST_PASS, XTS_ST_INFO, XTS_ST_SKIP, XTS_ST_REGRESSED, XTS_ST_NOISY, XTS_ST_TRAP,
-                               XTS_ST_FAIL, XTS_ST_HANG, XTS_ST_CRASH };
-  for (int i = 0; i < 9; i++) {
+  static const int order[] = { XTS_ST_PASS, XTS_ST_INFO, XTS_ST_SKIP, XTS_ST_REGRESSED, XTS_ST_NONLINEAR, XTS_ST_NOISY,
+                               XTS_ST_TRAP, XTS_ST_FAIL, XTS_ST_HANG, XTS_ST_CRASH };
+  for (int i = 0; i < 10; i++) {
     HT_EQ_U64(xts_status_rank(order[i]), i);
-    for (int k = 0; k < 9; k++) {
+    for (int k = 0; k < 10; k++) {
       int w = xts_status_worst(order[i], order[k]);
       HT_EQ_U64(w, order[i > k ? i : k]);
       HT_EQ_U64(xts_status_worst(order[k], order[i]), w);        /* symmetric */

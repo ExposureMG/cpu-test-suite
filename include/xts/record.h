@@ -14,7 +14,7 @@
  *   value    number   or null
  *   unit     string   "cycles", "ticks", "bool", "" ...
  *   n, min, median, mad, fit_r2   numbers (null when not applicable)
- *   status   string   pass | fail | trap | skip | noisy | regressed | hang | crash | info   (xts_status_worst ranks them)
+ *   status   string   pass | fail | trap | skip | noisy | nonlinear | regressed | hang | crash | info   (xts_status_worst ranks them)
  *   detail   object   family-defined; semantic mismatches attach in/out/expected state diffs here
  *   truncated true    only present if the detail JSON did not fit
  * results.csv has the same columns (cond as "k=v;k=v", detail omitted). failures.jsonl gets every record whose status is
@@ -26,15 +26,17 @@
 
 enum xts_status {
   XTS_ST_PASS = 0, XTS_ST_FAIL, XTS_ST_TRAP, XTS_ST_SKIP, XTS_ST_NOISY, XTS_ST_REGRESSED, XTS_ST_HANG, XTS_ST_CRASH,
-  XTS_ST_INFO, XTS_ST_COUNT
+  XTS_ST_INFO,
+  XTS_ST_NONLINEAR,   /* timing: repeatable, but the cost per unit depends on the depth (xts/timing.h quality gate) */
+  XTS_ST_COUNT
 };
 const char *xts_status_name(int st);
 /* The one status combiner: the more severe of a and b. Ranking (most severe first):
- *   crash > hang > fail > trap > noisy > regressed > skip > info > pass
+ *   crash > hang > fail > trap > noisy > nonlinear > regressed > skip > info > pass
  * A value outside the enum is ignored (the other one is returned). Use it everywhere a record's status is derived from
  * several measurements/checks; never write a local ranking. */
 int xts_status_worst(int a, int b);
-int xts_status_rank(int st);      /* 0 (pass) .. 8 (crash); -1 for a value outside the enum */
+int xts_status_rank(int st);      /* 0 (pass) .. 9 (crash); -1 for a value outside the enum */
 int xts_status_from_name(const char *name);   /* -1 if unknown */
 
 /* ---- vocabularies (checked by xts_emit in host builds: unknown names are logged once and flagged in the detail as

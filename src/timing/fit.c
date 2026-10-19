@@ -98,9 +98,17 @@ void xts_time_gate(const xts_tspec_t *s, xts_tresult_t *r)
     r->err_cycles = xts_cycles_per_tick * sqrt(r->slope_se * r->slope_se + md * md);
     if (r->err_cycles < 0.01) r->err_cycles = 0.01;
   }
+  double noise = s->iters > 0 ? 1.0 / s->iters : 0;  /* one tick over the whole run, per iteration */
+  for (int d = 0; d < s->ndepths; d++)
+    if (r->mad[d] > noise) noise = r->mad[d];
+  r->resid_over_noise = noise > 0 ? r->fit.max_resid / noise : INFINITY;
   if (r->spread_max < sl && r->fit.max_resid_rel < rl && fabs(r->aba_shift) < sl) {
     r->status = XTS_ST_PASS;
     r->why[0] = 0;
+  } else if (r->spread_max < sl && fabs(r->aba_shift) < sl && r->resid_over_noise >= XTS_NONLINEAR_FACTOR) {
+    r->status = XTS_ST_NONLINEAR;               /* repeatable: the residual is structure, not noise */
+    snprintf(r->why, sizeof r->why, "non-linear: residual %.4f >= %.4f, %.0fx the repeat spread", r->fit.max_resid_rel, rl,
+             r->resid_over_noise > 1e6 ? 1e6 : r->resid_over_noise);
   } else {
     r->status = XTS_ST_NOISY;
     if (r->spread_max >= sl) snprintf(r->why, sizeof r->why, "spread %.4f >= %.4f", r->spread_max, sl);

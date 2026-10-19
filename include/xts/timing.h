@@ -7,8 +7,12 @@
  *
  * ticks/iteration is fitted against depth by least squares: slope = ticks per unit (x cycles_per_tick = cycles per unit),
  * intercept = loop overhead. Each depth is measured `repeats` times in a shuffled order; the first depth is measured
- * again at the end (A/B/A) to catch regime shifts. Quality gate: status noisy unless the relative spread (MAD/median) of
- * every depth is < 2 % and the largest fit residual is < 1 % of its point.
+ * again at the end (A/B/A) to catch regime shifts. Quality gate: pass if the relative spread (MAD/median) of every depth
+ * and the A/B/A shift are < 2 % and the largest fit residual is < 1 % of its point. A residual above that is
+ * `nonlinear` when the points are repeatable - spread and A/B/A shift in limits and the largest absolute residual at
+ * least XTS_NONLINEAR_FACTOR times the largest per-depth MAD (floored at one tick over the run, 1/iters): the cost per
+ * unit then really depends on the depth (front end, code alignment), the slope is the least-squares average and
+ * fit.marginal_cycles gives the cost per depth step. Otherwise noisy.
  *
  *   static int body(xts_kbuf_t *k, int depth, void *arg) {          // emit `depth` dependent adds
  *     for (int i = 0; i < depth; i++) xk_emit(k, XI_addx, 0, 3, 3, 4);
@@ -91,7 +95,7 @@ typedef struct xts_tspec {
 
 typedef struct xts_tresult {
   int ok;                            /* 1 if every run executed (0 on the host or after a trap) */
-  int status;                        /* XTS_ST_PASS, XTS_ST_NOISY, XTS_ST_TRAP, XTS_ST_SKIP (host) */
+  int status;                        /* XTS_ST_PASS, XTS_ST_NONLINEAR, XTS_ST_NOISY, XTS_ST_TRAP, XTS_ST_SKIP (host) */
   xts_fit_t fit;                     /* y = ticks per iteration, x = depth */
   double cycles_per_unit;            /* fit.slope * xts_cycles_per_tick */
   double overhead_cycles;            /* fit.intercept * xts_cycles_per_tick */
@@ -108,9 +112,12 @@ typedef struct xts_tresult {
   double err_cycles;                 /* error bar per unit in cycles: cycles_per_tick * sqrt(slope_se^2 + (mad[deep]/depth[deep])^2),
                                         at least 0.01 (the sched_classes method); NaN when !ok */
   int failed;                        /* 1 if xts_time_measure returned <0 (kernel build / setup / exec error; why says) */
+  /* ---- v3 ---- */
+  double resid_over_noise;           /* largest |residual| / max(largest per-depth MAD, 1/iters) */
 } xts_tresult_t;
+#define XTS_NONLINEAR_FACTOR 5.0
 
-/* Run the whole series. Returns 0 (result in *r, including noisy) or <0 if kernels could not be built. */
+/* Run the whole series. Returns 0 (result in *r, including noisy / nonlinear) or <0 if kernels could not be built. */
 int xts_time_measure(const xts_tspec_t *s, struct xts_ctx *ctx, xts_tresult_t *r);
 /* Same-shape differential: measure `a` and `filler` (identical layout/length, filler replaces the unit by a known
  * 1-cycle independent instruction) and report a - filler per unit in *diff_cycles. */
@@ -141,9 +148,10 @@ void xts_time_emit(struct xts_ctx *ctx, const xts_tspec_t *s, const xts_tresult_
  * fit schema (xts_time_fit_json; every key always present, numbers null when not measured):
  *   {"unit":<spec unit text>, "iters":n, "status":"pass", ["why":".."], "cpu":<cycles per spec unit = slope_ticks *
  *    cycles_per_tick, NOT divided by per_unit>, "slope_ticks", "intercept_ticks", "r2", "max_resid_rel", "spread",
- *    "aba_shift", "slope_se", "depths":[..], "ticks_med":[..], "ticks_mad":[..], "cycles_per_tick", "per_unit",
- *    "kernel_words_max"}
- * ticks_* are ticks per loop iteration per depth (median / MAD over the repeats). */
+ *    "aba_shift", "slope_se", "resid_over_noise", "depths":[..], "ticks_med":[..], "ticks_mad":[..],
+ *    "marginal_cycles":[..], "cycles_per_tick", "per_unit", "kernel_words_max"}
+ * ticks_* are ticks per loop iteration per depth (median / MAD over the repeats); marginal_cycles[i] is the cost of the
+ * step depths[i] -> depths[i+1] in cycles per unit, divided by per_unit like the record value. */
 typedef struct xts_temit {
   const char *metric;        /* required; metric vocabulary (xts/record.h) */
   const char *unit;          /* NULL -> "cycles" */

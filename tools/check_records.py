@@ -25,7 +25,7 @@ import sys
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATUSES = {"pass", "fail", "trap", "skip", "noisy", "regressed", "hang", "crash", "info"}
+STATUSES = {"pass", "fail", "trap", "skip", "noisy", "nonlinear", "regressed", "hang", "crash", "info"}
 FIELDS = {  # name: allowed types
     "run_id": (str,), "seq": (int,), "family": (str,), "case_id": (str,), "mnem": (str,), "word": (str,),
     "cond": (dict,), "block": (str,), "metric": (str,), "value": (int, float, type(None)), "unit": (str,),
@@ -111,7 +111,7 @@ def check_run(run_dir, metrics, units, rep):
         if "vocab_warning" in det:
             rep.add("vocab-warning", "%s: %s %s" % (where, r.get("family"), r.get("case_id")))
         fit = det.get("fit") if isinstance(det, dict) else None
-        if isinstance(fit, dict) and st in ("pass", "fail", "noisy", "regressed", "info"):   # measured records only
+        if isinstance(fit, dict) and st in ("pass", "fail", "noisy", "nonlinear", "regressed", "info"):   # measured records only
             miss = FIT_KEYS - set(fit)
             if miss:
                 rep.add("fit-schema", "%s: %s %s missing %s" % (where, r.get("family"), r.get("case_id"), sorted(miss)))

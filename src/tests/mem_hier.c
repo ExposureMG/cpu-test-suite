@@ -118,7 +118,7 @@ static double rand_measure(xts_ctx_t *ctx, int i, xts_tspec_t *s, xts_tresult_t 
   uint32_t ws = rand_kb[i] * MU_KB, n = ws / MU_LINE;
   int warm = ws <= WARM_MAX;
   double v = chase_point(ctx, 0, n, MU_LINE, 0, 0, 1, 0xC4A5Eu + (uint32_t)i, warm, warm ? 0 : STEPS, s, r, err);
-  if (!*err && r->ok && (r->status == XTS_ST_PASS || r->status == XTS_ST_NOISY)) { rand_pts[oc_index()][i] = v; rand_have[oc_index()][i] = 1; }
+  if (!*err && r->ok && (r->status == XTS_ST_PASS || r->status == XTS_ST_NONLINEAR || r->status == XTS_ST_NOISY)) { rand_pts[oc_index()][i] = v; rand_have[oc_index()][i] = 1; }
   return v;
 }
 
@@ -630,14 +630,14 @@ static int fin_line(const char *line, void *ud)
   unsigned n = 0;
   if (xts_rline_parse(line, &l) < 0 || isnan(l.value)) return 0;
   if (!strcmp(l.metric, "latency") && sscanf(l.case_id, "chase.rand.%uk", &n) == 1) {
-    if (l.status != XTS_ST_PASS && l.status != XTS_ST_NOISY) return 0;
+    if (l.status != XTS_ST_PASS && l.status != XTS_ST_NONLINEAR && l.status != XTS_ST_NOISY) return 0;
     char oc[24];
     if (!xts_rline_cond(&l, "other_cores", oc, sizeof oc)) oc[0] = 0;
     fin_group_t *g = fin_group(oc);
     for (int i = 0; g && i < NRAND; i++)
       if (rand_kb[i] == n) g->y[i] = l.value;
   } else if (!strcmp(l.metric, "penalty") && sscanf(l.case_id, "tlb.%u", &n) == 1) {
-    if (l.status != XTS_ST_PASS && l.status != XTS_ST_NOISY && l.status != XTS_ST_REGRESSED) return 0;
+    if (l.status != XTS_ST_PASS && l.status != XTS_ST_NONLINEAR && l.status != XTS_ST_NOISY && l.status != XTS_ST_REGRESSED) return 0;
     for (int i = 0; i < NTLB; i++)
       if (tlb_pages[i] == n) fd.tlb[i] = l.value;
   }
