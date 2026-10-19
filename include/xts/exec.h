@@ -166,7 +166,7 @@ uint32_t xts_exec_kernel_capacity(void);   /* words */
 int xts_exec_is_host(void);
 
 /* Cache maintenance for generated code / data (console: dcbst/sync/icbi/isync; host: no-op). xts_dcbf_range flushes on the
- * calling core AND on the test core (a dcbf on one core does not invalidate the other's L1); xts_touch_range touches on the
+ * calling core AND on the test core (an xdcbt'd line in the test core's L1 survives a remote dcbf); xts_touch_range touches on the
  * test core. */
 void xts_sync_code(void *addr, uint32_t len);
 void xts_dcbf_range(void *addr, uint32_t len);

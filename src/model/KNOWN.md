@@ -19,10 +19,16 @@ family) is either fixed in the model or recorded here with its evidence.
 ## Open
 - **Not a model disagreement: the semantic run's load failures (2026-10-19) were an XTS bug.** About half of every
   load family (lbz 25/48, ld 26/48, lvx 24/72, lvx128 72/72, ...) read data that an EARLIER store case had left in
-  scratch, while the expected baseline (byte i = i*13+7) was what the suite core had written and flushed. A dcbf on the
-  suite core did not remove the test core's L1 copy. Fixed in src/exec/exec_console.c (both cores flush the shared
-  buffers; xts_dcbf_range and xts_prep flush on the test core too); self.cores data_sync_* now measures the effect.
-  Re-run semantic before reading any load/store record of that run.
+  scratch, while the expected baseline (byte i = i*13+7) was what the suite core had written and flushed. All 144 load
+  cases before the first xdcbt case passed; the first stale load came 24 records after it. Plain cross-core hand-over is
+  coherent (cores run: data_sync_c2t_read/c2t_store/t2c_plain all 0), so the likely cause is that a line xdcbt brought
+  into the test core's L1 is not invalidated by the suite core's stores and dcbf (data_sync_c2t_xdcbt tests it). Fixed in
+  src/exec/exec_console.c: the test core drops its copies of the shared buffers before every case, and xts_dcbf_range /
+  xts_prep flush on the test core too. Second semantic run: every load family 0 failures.
+- **lswx with XER byte count 0** (second semantic run, word 7F055C2A = lswx r24,r5,r11, SF=0, EA = scratch+0x84): the
+  model leaves RT unchanged (architecturally undefined), the CPU returned 0x00000000BB000000 - the byte at EA in the top
+  byte of the low word, as if one byte were loaded. One case; the run's other count-0 cases (if any) passed but carry no
+  detail. Not changed in the model yet: needs targeted count-0 cases (several EAs, RT values, SF=0/1).
 - **vmsum4fp128: hardware is 1 ULP lower than the model on a sign-mixed case** (first console smoke run, 2026-10-19,
   Jasper, PVR 0x00710500; exec.vmx128 case vmsum4fp128#12, word 173945D8, sf=64, VSCR 0). Inputs (VA = VD = v89,
   VB = v8): A = AF3D0257 96C316AE 37EFC7C9 C5106AAB, B = 80000001 007FFFFF BF000000 4F000000. Model D4906AAB in every

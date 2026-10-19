@@ -9,11 +9,11 @@
  * (xts_core_xc_call -> xts_core_test_core_lost). xts_touch_range runs on the test core too (it is about ITS caches).
  *
  * Data the two cores share (the input/output images, scratch, the job record, prepared big-buffer regions) is handed over
- * with an explicit dcbf on BOTH sides: the semantic run on hardware showed the test core loading its own stale L1 copy of
- * scratch after the suite had rewritten it and flushed it from the suite core (loads returned what an earlier store case
- * left there, ~50% of all load cases). So a dcbf on the suite core does not reach the test core's L1. The writer flushes
- * its copy, the reader drops its own (stage_job on the test core; the suite after the call) - all outside the timed part.
- * self.cores data_sync_* measures the effect directly. */
+ * with an explicit dcbf on BOTH sides. Plain hand-over is coherent (self.cores data_sync_*, cores run 2026-10-19), but in
+ * the first semantic run, from the first xdcbt case on, about half of all load cases read what an earlier store case had
+ * left in scratch: a line that xdcbt brought into the test core's L1 is not invalidated when the suite core rewrites and
+ * flushes it (data_sync_c2t_xdcbt checks this). Any case may run xdcbt, so the reader always drops its own copy
+ * (stage_job on the test core; the suite after the call) - all outside the timed part. */
 #include <stdio.h>
 #include <string.h>
 #include <ppc/cache.h>
@@ -65,7 +65,7 @@ static void dcbf_here(void *addr, uint32_t len)
 static void dcbf_job(void *a, void *b) { dcbf_here(a, (uint32_t)b); }
 
 /* out of every cache that can hold it: the suite core's (where the data was usually just written) AND the test core's
- * (a dcbf on one core does not invalidate the other core's L1, see the top of this file) */
+ * (a line an xdcbt brought into the test core's L1 survives a dcbf on the suite core, see the top of this file) */
 void xts_dcbf_range(void *addr, uint32_t len)
 {
   dcbf_here(addr, len);

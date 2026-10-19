@@ -368,6 +368,8 @@ static int run_str(const xts_case_t *c, xts_ctx_t *ctx)
     xts_set_gpr(&x, rg, xe_gpr_value(r));
   }
   xe_noise(r, &x, d);
+  xts_set_gpr(&x, T, tv);                                /* again: the noise may have changed CTR (15% of cases) */
+  xts_set_ctr(&x, tv);
   if (which == LSWX || which == STSWX) {
     uint64_t xer = xe_pct(r, 50) ? xe_xer[xts_rng_below(r, XE_N(xe_xer))] : 0;
     xts_set_xer(&x, xer | (uint64_t)bytes);
