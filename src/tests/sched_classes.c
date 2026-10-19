@@ -523,15 +523,19 @@ int sc_measure(xts_ctx_t *ctx, sc_unit_t *u, double est, sc_meas_t *m)
     m->status = XTS_ST_FAIL;
     return -1;
   }
-  int dmax = 2048 / w;
-  if (dmax > 48) dmax = 48;
-  if (dmax < 6) dmax = 6;
-  s->ndepths = 6;
-  for (int i = 0; i < 6; i++) {
-    int dv = (int)(dmax * (i + 1) / 6.0 + 0.5);
-    if (dv < 1) dv = 1;
-    if (i && dv <= s->depths[i - 1]) dv = s->depths[i - 1] + 1;
-    s->depths[i] = dv;
+  /* line layout: loop top at byte 12 of a fetch group, depths in whole 128-byte lines (xts/timing.h); a body that is not
+   * linear in depth keeps the old scheme (up to 48 units, at most 2048 words) */
+  if (xts_time_line_layout(s, 1) <= 0) {
+    int dmax = 2048 / w;
+    if (dmax > 48) dmax = 48;
+    if (dmax < 6) dmax = 6;
+    s->ndepths = 6;
+    for (int i = 0; i < 6; i++) {
+      int dv = (int)(dmax * (i + 1) / 6.0 + 0.5);
+      if (dv < 1) dv = 1;
+      if (i && dv <= s->depths[i - 1]) dv = s->depths[i - 1] + 1;
+      s->depths[i] = dv;
+    }
   }
   if (!(est > 0) || isnan(est)) est = 2.0 * w;
   double c0 = est * s->depths[0] + 12;

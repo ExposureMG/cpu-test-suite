@@ -96,6 +96,9 @@ typedef struct xts_tspec {
                                         align*k + top_offset. frontend.loop (2026-10-19): with the top at byte 12 of a
                                         16-byte fetch group and bodies a multiple of 4 words, the per-iteration loop
                                         cost is smooth in the body length; with the top at 0 it jumps 4-11 cycles. */
+  int line_layout;                   /* set by xts_time_line_layout (the word multiple used, >= 1); a caller that hands
+                                        the spec to code which sets the body itself (mu_chase_measure) sets it to 1 to
+                                        ask for the layout there */
 } xts_tspec_t;
 #define XTS_TSPEC_DEFAULT { .unit = "", .depths = { 4, 8, 12, 16, 24, 32 }, .ndepths = 6, .repeats = 5, .iters = 256, \
                             .align = 32, .spread_limit = 0.02, .resid_limit = 0.01 }
@@ -125,6 +128,17 @@ typedef struct xts_tresult {
 } xts_tresult_t;
 #define XTS_NONLINEAR_FACTOR 5.0
 #define XTS_ABA_RUNS 3
+
+/* The line layout for unit-repeating bodies (frontend.loop method check, 2026-10-19: li 1.020 and add 2.018 cycles per
+ * unit with fit residuals <= 0.06%, against 8.9% for the old layout): loop top at byte 12 of a 16-byte fetch group
+ * (align 16, top_offset 12), and six depths in equal steps of whole 128-byte lines - the step is lcm(32, w, word_multiple)
+ * words, w = words per unit found by building the body at depths 1-3 - so every depth's body is a multiple of 4 words
+ * and each step adds the same whole lines. iters is scaled by old depths[0] / new depths[0] (at least 32) so the first
+ * depth keeps its run length; families that derive iters from depths[0] afterwards get the same. Call it after body,
+ * pre and arg are set. The depth list of the unroll axis is kept (only the top offset applies); a body whose size is
+ * not linear in depth keeps its depths. Returns the step in units, 0 (depths kept), or <0 (kernel build failed). The
+ * measured bias of this layout is about +0.02 cycles per word (one extra cycle per ~50 words fetched). */
+int xts_time_line_layout(xts_tspec_t *s, int word_multiple);
 
 /* Run the whole series. Returns 0 (result in *r, including noisy / nonlinear) or <0 if kernels could not be built. */
 int xts_time_measure(const xts_tspec_t *s, struct xts_ctx *ctx, xts_tresult_t *r);

@@ -43,6 +43,44 @@ int xts_time_build(const xts_tspec_t *s, int depth, xts_kbuf_t *k)
 
 static xts_kbuf_t *shared_k;
 
+static int gcd_i(int a, int b)
+{
+  while (b) { int t = a % b; a = b; b = t; }
+  return a;
+}
+static int lcm_i(int a, int b) { return a / gcd_i(a, b) * b; }
+
+int xts_time_line_layout(xts_tspec_t *s, int word_multiple)
+{
+  int wm = word_multiple > 1 ? word_multiple : 1;
+  if (!s->body) return -1;
+  s->align = 16;
+  s->top_offset = 12;
+  s->line_layout = wm;
+  if (xts_env.unroll) return 0;                       /* the unroll axis chose the depths */
+  if (!shared_k) shared_k = xk_new(xts_exec_kernel_capacity());
+  if (!shared_k) return -1;
+  int n[3];
+  for (int d = 1; d <= 3; d++) {                      /* the body alone: a depth-dependent pre() must not count */
+    xk_reset(shared_k);
+    if (s->body(shared_k, d, s->arg) < 0 || shared_k->err) return -1;
+    n[d - 1] = (int)shared_k->n;
+  }
+  int w = n[1] - n[0];
+  if (w < 1 || n[2] - n[1] != w) return 0;            /* body size not linear in depth: keep the family's depths */
+  int step_words = lcm_i(lcm_i(32, w), wm);
+  if (step_words > 1024) {                            /* huge units: whole fetch groups, at least a line per step */
+    step_words = lcm_i(lcm_i(4, w), wm);
+    while (step_words < 32) step_words *= 2;
+  }
+  int step = step_words / w, old0 = s->depths[0] > 0 ? s->depths[0] : 1;
+  s->ndepths = 6;
+  for (int i = 0; i < 6; i++) s->depths[i] = step * (i + 1);
+  double it = (double)s->iters * old0 / s->depths[0];
+  s->iters = it < 32 ? 32 : (uint32_t)(it + 0.5);
+  return step;
+}
+
 static int do_setup(const xts_tspec_t *s, xts_exec_t *x, int depth, int run)
 {
   if (s->setup2) return s->setup2(x, depth, run, s->arg);

@@ -226,6 +226,7 @@ static double lat_run(xts_ctx_t *ctx, lat_arg_t *a, xts_tspec_t *s, xts_tresult_
   s->setup = lat_setup;
   s->arg = a;
   a->runs = 0;
+  xts_time_line_layout(s, 1);                         /* top at byte 12 of a fetch group, whole-line depths */
   return mu_measure(ctx, s, r);
 }
 
@@ -258,6 +259,7 @@ static const lref_t *lat_refs(xts_ctx_t *ctx, int lv)
     /* pure chase over the same chain: the pointer is at +8 */
     xts_tspec_t sp = XTS_TSPEC_DEFAULT;
     sp.iters = LAT_ITERS;
+    sp.line_layout = 1;                               /* mu_chase_measure applies the line layout */
     R->pure = mu_chase_measure(ctx, &lchain, p.warm, p.flush, p.rotate, &sp, &r3);
     R->st = xts_status_worst(xts_status_worst(r1.status, r2.status), r3.status);
     const xts_tresult_t *pr[3] = { &r1, &r2, &r3 };   /* idx, cr, pure: which part keeps a level noisy */
@@ -360,6 +362,7 @@ static double tp_run(xts_ctx_t *ctx, tp_arg_t *a, xts_tspec_t *s, xts_tresult_t 
   s->arg = a;
   a->base = region.addr;
   a->idx = a->f->lr == 2 ? 16 : 0;
+  xts_time_line_layout(s, 1);                         /* top at byte 12 of a fetch group, whole-line depths */
   return mu_measure(ctx, s, r);
 }
 
@@ -756,6 +759,7 @@ static int run_lhs(const xts_case_t *c, xts_ctx_t *ctx)
   sa.body = lhs_body;
   sa.setup = lhs_setup;
   sa.arg = &a;
+  xts_time_line_layout(&sa, 1);                       /* both halves of the differential share the layout */
   sb = sa;
   sb.arg = &b;
   double va = mu_measure(ctx, &sa, &ra), vb = mu_measure(ctx, &sb, &rb);

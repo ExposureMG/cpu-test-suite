@@ -121,6 +121,7 @@ static void spec_long(meas_t *m, const char *unit, int (*body)(xts_kbuf_t *, int
   m->s.iters = iters;
   m->s.ndepths = 6;
   for (int i = 0; i < 6; i++) m->s.depths[i] = dl[i];
+  xts_time_line_layout(&m->s, 1);                     /* top at byte 12 of a fetch group, whole-line depths */
 }
 
 static double g_tb_hz_meas;          /* from tb_rtc, this boot (0 = not measured) */
@@ -235,6 +236,7 @@ static int h_mftb_cost(xts_ctx_t *ctx)
   mset_unit(m, "mftb rD,268");
   m->s.body = mftb_body;
   m->s.iters = pick_iters(44);
+  xts_time_line_layout(&m->s, 1);
   mrun(m, ctx);
   tmeta_t t = TM("mftb", NULL, "back_to_back_throughput");
   t.baseline = 1;

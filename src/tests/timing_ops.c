@@ -510,6 +510,9 @@ void tlat_spec(xts_tspec_t *sp, tlat_kern_t *k, double est, const char *unit)
     for (int i = 0; i < sp->ndepths; i++)
       while ((sp->depths[i] * k->per_unit) % k->npat) sp->depths[i]++;
   }
+  /* line layout (xts/timing.h): top at byte 12 of a fetch group, depths in whole lines that are also whole pattern
+   * repeats; under the unroll axis only the top offset changes */
+  xts_time_line_layout(sp, !k->any_len && k->npat > 1 ? k->npat : 1);
   if (!(est > 0.1)) est = 4;
   double it = 262144.0 / (est * sp->depths[0]);
   if (it < 32) it = 32;

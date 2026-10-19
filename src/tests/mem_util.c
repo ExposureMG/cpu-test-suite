@@ -312,6 +312,7 @@ double mu_chase_measure(xts_ctx_t *ctx, mu_chain_t *c, int warm, int flush, uint
   s->setup = mu_chase_setup;
   s->arg = &a;
   if (!s->unit || !s->unit[0]) s->unit = "ld r3,0(r3)";
+  if (s->line_layout) xts_time_line_layout(s, s->line_layout);   /* asked for by the caller (ldst.lat references) */
   return mu_measure(ctx, s, r);
 }
 

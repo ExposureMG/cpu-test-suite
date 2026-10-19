@@ -126,6 +126,7 @@ static int run_gen(meas_t *m, xts_ctx_t *ctx, gen_t *g, const char *unit, double
   m->s.arg = g;
   if (g->gpr_loop) m->s.loop = XTS_LOOP_GPR;
   m->s.iters = pick_iters(est);
+  xts_time_line_layout(&m->s, 1);                     /* top at byte 12 of a fetch group, whole-line depths */
   return mrun(m, ctx);
 }
 
