@@ -11,8 +11,9 @@
  * Data the two cores share (the input/output images, scratch, the job record, prepared big-buffer regions) is handed over
  * with an explicit dcbf on BOTH sides. Plain hand-over is coherent (self.cores data_sync_*, cores run 2026-10-19), but in
  * the first semantic run, from the first xdcbt case on, about half of all load cases read what an earlier store case had
- * left in scratch: a line that xdcbt brought into the test core's L1 is not invalidated when the suite core rewrites and
- * flushes it (data_sync_c2t_xdcbt checks this). Any case may run xdcbt, so the reader always drops its own copy
+ * left in scratch: a line that xdcbt fetched into the test core's L1 is not invalidated when the suite core rewrites and
+ * flushes it (hardware fact: self.cores data_sync_c2t_xdcbt, 999 of 1,000 rounds stale). Any case may run xdcbt, so the
+ * reader always drops its own copy
  * (stage_job on the test core; the suite after the call) - all outside the timed part. */
 #include <stdio.h>
 #include <string.h>

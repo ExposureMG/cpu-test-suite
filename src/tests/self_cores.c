@@ -11,10 +11,13 @@
  *     c2t_staged as c2t_store, and the test core dcbf's its own copy first (what the exec engine does)     (must be 0)
  *     t2c_plain  test core writes, suite reads; the suite had read the buffer the round before          (info)
  *     t2c_staged as t2c_plain, and the suite dcbf's its own copy before reading (what the exec engine does) (must be 0)
- *     c2t_xdcbt  as c2t_read, but the test core also runs xdcbt on every line after reading it          (info)
+ *     c2t_xdcbt  as c2t_read, but afterwards the test core drops the lines (dcbf) and refetches them with xdcbt,
+ *                as in the semantic run, where 24 dcbz128 cases (which drop the line from L1) preceded the xdcbt ones (info)
  *     c2t_xdcbt_staged  as c2t_xdcbt, and the test core dcbf's its own copy first                       (must be 0)
- *                Hardware (cores run 2026-10-19): the first five all 0 - plain cross-core hand-over is coherent. The
- *                semantic run's stale loads began right after the first xdcbt case; c2t_xdcbt tests that cause.
+ *                Hardware (cores runs 2026-10-19, Jasper): every variant 0 except c2t_xdcbt: 999 of 1,000 rounds
+ *                stale (127,840 of 128,000 words) - a line xdcbt FETCHES into a core's L1 is not invalidated by
+ *                another core's stores and dcbf. An xdcbt on a line already in L1 changes nothing (also 0).
+ *                c2t_xdcbt_staged 0: the reader's own dcbf removes the line.
  *   smt_exit_p<n> a busy_int load on PIR 1/3/5 starts, its heartbeat advances, it stops through xts_smt_exit and the exit
  *                self-check (smt_entry.S: SPRG2 == table == TCB self word, PIR) passed (exit_why ok)
  * A lost test core never returns from xts_core_xc_call (the core reports the crash/hang and halts). Host: roles,
@@ -106,8 +109,10 @@ static void dsync_c2t_job(void *a, void *b)
   j->stale = stale;
   if (j->mode == D_C2T_STORE || j->mode == D_C2T_STAGED)
     for (uint32_t i = 0; i < DSYNC_WORDS; i++) ((volatile uint32_t *)dbuf)[i] = dpat(j->round, i);
-  if (j->xdcbt_fn)
+  if (j->xdcbt_fn) {
+    dflush();                                  /* out of this core's L1, so the xdcbt has to fetch the line */
     for (uint32_t o = 0; o < sizeof dbuf; o += 128) ((void (*)(void *))j->xdcbt_fn)((uint8_t *)dbuf + o);
+  }
   __sync_synchronize();
 }
 static void dflush_job(void *a, void *b) { (void)a; (void)b; dflush(); }

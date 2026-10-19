@@ -20,9 +20,11 @@ family) is either fixed in the model or recorded here with its evidence.
 - **Not a model disagreement: the semantic run's load failures (2026-10-19) were an XTS bug.** About half of every
   load family (lbz 25/48, ld 26/48, lvx 24/72, lvx128 72/72, ...) read data that an EARLIER store case had left in
   scratch, while the expected baseline (byte i = i*13+7) was what the suite core had written and flushed. All 144 load
-  cases before the first xdcbt case passed; the first stale load came 24 records after it. Plain cross-core hand-over is
-  coherent (cores run: data_sync_c2t_read/c2t_store/t2c_plain all 0), so the likely cause is that a line xdcbt brought
-  into the test core's L1 is not invalidated by the suite core's stores and dcbf (data_sync_c2t_xdcbt tests it). Fixed in
+  cases before the first xdcbt case passed; the first stale load came 24 records after it (the xdcbt cases followed 24
+  dcbz128 cases, which drop the line from L1, so each xdcbt fetched it). **Hardware fact (self.cores, cores run
+  2026-10-19): a line that xdcbt fetches into a core's L1 is not invalidated by another core's stores or dcbf** -
+  data_sync_c2t_xdcbt: 999 of 1,000 rounds stale, 127,840 of 128,000 words; an xdcbt on a line already in L1 changes
+  nothing; plain hand-over is coherent (every other variant 0); the reader's own dcbf removes the line. Fixed in
   src/exec/exec_console.c: the test core drops its copies of the shared buffers before every case, and xts_dcbf_range /
   xts_prep flush on the test core too. Second semantic run: every load family 0 failures.
 - **lswx with XER byte count 0** (second semantic run, word 7F055C2A = lswx r24,r5,r11, SF=0, EA = scratch+0x84): the
