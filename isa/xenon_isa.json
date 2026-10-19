@@ -6372,9 +6372,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -6430,9 +6433,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -6537,9 +6543,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -6603,9 +6612,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -6733,13 +6745,16 @@
     },
     "fixed_operands": {
      "denormal": 57.69,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.023,
+     "normal": 1.005,
+     "special": 1.023
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -6810,9 +6825,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -6868,9 +6886,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -6947,9 +6968,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -7552,9 +7576,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -7629,9 +7656,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -7708,9 +7738,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -7788,13 +7821,16 @@
     },
     "fixed_operands": {
      "denormal": 57.81,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.022,
+     "normal": 1.004,
+     "special": 1.025
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "hardware_semantics": {
     "formula": "D = A*C + B",
@@ -7881,13 +7917,16 @@
     },
     "fixed_operands": {
      "denormal": 57.69,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.023,
+     "normal": 1.005,
+     "special": 1.024
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "hardware_semantics": {
     "formula": "D = -(A*C - B)",
@@ -7959,9 +7998,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8027,9 +8069,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8138,9 +8183,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8204,9 +8252,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8333,13 +8384,16 @@
     },
     "fixed_operands": {
      "denormal": 57.69,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.022,
+     "normal": 1.005,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8411,9 +8465,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8471,9 +8528,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8545,9 +8605,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8605,9 +8668,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8719,9 +8785,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8791,9 +8860,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8863,9 +8935,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -8924,9 +8999,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9070,14 +9148,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.025,
+     "denormal_nj": 1.024,
+     "normal": 1.004,
+     "special": 1.024
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9136,9 +9217,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9194,9 +9278,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9271,9 +9358,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9476,9 +9566,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9538,9 +9631,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9600,9 +9696,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9661,9 +9760,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9854,9 +9956,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9915,9 +10020,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -9973,9 +10081,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10045,9 +10156,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10174,9 +10288,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10239,13 +10356,16 @@
     },
     "fixed_operands": {
      "denormal": 57.69,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
+     "denormal_nj": 1.024,
+     "normal": 1.004,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10315,9 +10435,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10377,9 +10500,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10513,9 +10639,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10574,14 +10703,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.024,
+     "denormal_nj": 1.022,
+     "normal": 1.004,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10641,12 +10773,15 @@
     "fixed_operands": {
      "denormal": 57.87,
      "denormal_nj": 1.14,
-     "normal": 1.14,
+     "normal": 1.004,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.normal, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10708,9 +10843,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10833,9 +10971,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10891,9 +11032,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -10957,9 +11101,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.008,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11075,14 +11222,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.023,
+     "denormal_nj": 1.023,
+     "normal": 1.004,
+     "special": 1.024
     },
-    "issue": 1.14,
+    "issue": 1.013,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11156,9 +11306,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11223,9 +11376,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11282,9 +11438,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11349,9 +11508,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11410,9 +11572,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11476,9 +11641,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11589,14 +11757,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.023,
+     "denormal_nj": 1.022,
+     "normal": 1.004,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11662,9 +11833,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11730,9 +11904,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11799,9 +11976,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11859,9 +12039,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11930,9 +12113,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -11996,9 +12182,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12047,14 +12236,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.024,
+     "denormal_nj": 1.022,
+     "normal": 1.004,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12128,9 +12320,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12195,9 +12390,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12324,9 +12522,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12389,14 +12590,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.023,
+     "denormal_nj": 1.022,
+     "normal": 1.006,
+     "special": 1.024
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12451,14 +12655,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.023,
+     "denormal_nj": 1.021,
+     "normal": 1.005,
+     "special": 1.022
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12524,9 +12731,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12586,9 +12796,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12644,9 +12857,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12702,9 +12918,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12765,9 +12984,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -12893,9 +13115,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13016,9 +13241,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13081,9 +13309,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13142,9 +13373,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13203,9 +13437,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13269,9 +13506,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13399,9 +13639,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13503,9 +13746,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": [
@@ -13570,9 +13816,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13637,9 +13886,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13705,9 +13957,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13771,9 +14026,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -13830,14 +14088,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
+     "denormal": 1.021,
+     "denormal_nj": 1.019,
+     "normal": 1.004,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14008,14 +14269,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
+     "denormal": 1.021,
      "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "normal": 1.005,
+     "special": 1.023
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14083,14 +14347,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.024,
+     "denormal_nj": 1.025,
+     "normal": 1.004,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14144,9 +14411,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.008,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": [
@@ -14209,9 +14479,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14270,9 +14543,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14404,9 +14680,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.004,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14471,14 +14750,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.025,
+     "denormal_nj": 1.021,
+     "normal": 1.004,
+     "special": 1.025
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14537,9 +14819,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14598,9 +14883,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14656,9 +14944,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14782,9 +15073,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14850,13 +15144,16 @@
    "timing": {
     "fixed_operands": {
      "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.021,
+     "normal": 1.005,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14912,9 +15209,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -14976,9 +15276,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15034,9 +15337,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15115,9 +15421,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15188,9 +15497,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15260,9 +15572,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15387,9 +15702,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15460,9 +15778,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15580,9 +15901,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15638,9 +15962,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15699,9 +16026,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -15924,9 +16254,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -16150,9 +16483,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -16266,9 +16602,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -16439,9 +16778,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -16553,9 +16895,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "vmx_support": "hardware-confirmed",
    "vmx_evidence": []
@@ -16692,9 +17037,12 @@
      "normal": 1.43,
      "special": 1.43
     },
-    "issue": 1.33,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -16765,13 +17113,16 @@
     },
     "fixed_operands": {
      "denormal": 57.78,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.022,
+     "normal": 1.006,
+     "special": 1.02
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -16835,13 +17186,16 @@
     },
     "fixed_operands": {
      "denormal": 57.69,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
+     "denormal_nj": 1.023,
+     "normal": 1.005,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, issue"
+    }
    }
   },
   {
@@ -16920,13 +17274,16 @@
     },
     "fixed_operands": {
      "denormal": 57.79,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.022,
+     "normal": 1.004,
+     "special": 1.02
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -16998,9 +17355,12 @@
      "normal": 1.52,
      "special": 1.51
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "hardware_semantics": {
     "formula": "D = A*B + D",
@@ -17085,9 +17445,12 @@
      "normal": 1.51,
      "special": 1.52
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "hardware_semantics": {
     "formula": "D = A*D + B",
@@ -17169,9 +17532,12 @@
      "normal": 1.52,
      "special": 1.51
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    },
    "hardware_semantics": {
     "formula": "D = -(A*B - D)",
@@ -17254,12 +17620,15 @@
     "fixed_operands": {
      "denormal": 62.21,
      "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "normal": 1.005,
+     "special": 1.022
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 14.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -17325,13 +17694,16 @@
     },
     "fixed_operands": {
      "denormal": 62.21,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.022,
+     "normal": 1.004,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 14.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -17389,9 +17761,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17455,9 +17830,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17516,9 +17894,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17581,9 +17962,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.008,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17646,9 +18030,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17714,9 +18101,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17774,9 +18164,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17853,9 +18246,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17912,9 +18308,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -17979,9 +18378,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18039,9 +18441,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18118,9 +18523,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18177,9 +18585,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18236,9 +18647,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18296,9 +18710,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18353,9 +18770,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18422,14 +18842,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.023,
+     "denormal_nj": 1.021,
+     "normal": 1.006,
+     "special": 1.023
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -18486,9 +18909,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18548,14 +18974,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.023,
+     "denormal_nj": 1.024,
+     "normal": 1.004,
+     "special": 1.02
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -18619,9 +19048,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18685,14 +19117,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
+     "denormal": 1.021,
+     "denormal_nj": 1.023,
      "normal": 1.14,
-     "special": 1.14
+     "special": 1.024
     },
     "issue": 1.14,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.special"
+    }
    }
   },
   {
@@ -18753,9 +19188,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18814,14 +19252,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.022,
+     "denormal_nj": 1.025,
+     "normal": 1.004,
+     "special": 1.02
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -18887,9 +19328,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -18955,9 +19399,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19023,9 +19470,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19089,14 +19539,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.025,
+     "denormal_nj": 1.018,
+     "normal": 1.005,
+     "special": 1.023
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -19153,14 +19606,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
+     "denormal": 1.021,
+     "denormal_nj": 1.024,
+     "normal": 1.004,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, issue"
+    }
    }
   },
   {
@@ -19219,14 +19675,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.025,
+     "denormal_nj": 1.024,
+     "normal": 1.005,
+     "special": 1.024
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -19294,9 +19753,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19355,14 +19817,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.024,
+     "denormal_nj": 1.021,
+     "normal": 1.005,
+     "special": 1.021
     },
     "issue": 1.14,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special"
+    }
    }
   },
   {
@@ -19425,9 +19890,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19493,9 +19961,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19546,14 +20017,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
+     "denormal": 1.022,
      "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "normal": 1.004,
+     "special": 1.021
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -19618,9 +20092,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19676,14 +20153,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.021,
+     "denormal_nj": 1.017,
+     "normal": 1.004,
+     "special": 1.022
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -19741,9 +20221,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19791,14 +20274,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.021,
+     "denormal_nj": 1.023,
+     "normal": 1.004,
+     "special": 1.02
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -19856,9 +20342,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -19910,14 +20399,17 @@
    },
    "timing": {
     "fixed_operands": {
-     "denormal": 1.14,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal": 1.026,
+     "denormal_nj": 1.018,
+     "normal": 1.004,
+     "special": 1.025
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal, fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -20000,9 +20492,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -20191,13 +20686,16 @@
     },
     "fixed_operands": {
      "denormal": 57.69,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.022,
+     "normal": 1.004,
+     "special": 1.026
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -20252,13 +20750,16 @@
     },
     "fixed_operands": {
      "denormal": 57.69,
-     "denormal_nj": 1.14,
-     "normal": 1.14,
-     "special": 1.14
+     "denormal_nj": 1.021,
+     "normal": 1.004,
+     "special": 1.022
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 12.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): fixed_operands.denormal_nj, fixed_operands.normal, fixed_operands.special, issue"
+    }
    }
   },
   {
@@ -20341,9 +20842,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -20418,9 +20922,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -20547,9 +21054,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -20609,9 +21119,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -20690,9 +21203,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 4.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -36693,9 +37209,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -36783,9 +37302,12 @@
      "normal": 1.14,
      "special": 36.41
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -36922,9 +37444,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37013,9 +37538,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37149,9 +37677,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37238,9 +37769,12 @@
      "normal": 1.14,
      "special": 36.45
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37326,9 +37860,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37394,9 +37931,12 @@
      "normal": 1.14,
      "special": 36.48
     },
-    "issue": 1.14,
+    "issue": 1.013,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37741,9 +38281,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.013,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37802,9 +38345,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -37888,9 +38434,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.008,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38075,9 +38624,12 @@
      "normal": 1.14,
      "special": 36.41
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38164,9 +38716,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38311,9 +38866,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.014,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38460,9 +39018,12 @@
      "normal": 1.14,
      "special": 36.41
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38524,9 +39085,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38607,9 +39171,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38695,9 +39262,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.007,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38776,9 +39346,12 @@
      "normal": 1.14,
      "special": 36.41
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -38842,9 +39415,12 @@
      "normal": 1.14,
      "special": 36.44
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -39017,9 +39593,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -39213,9 +39792,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.01,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -39323,9 +39905,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -39402,9 +39987,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -39596,9 +40184,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.009,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -39683,9 +40274,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.006,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   },
   {
@@ -39778,9 +40372,12 @@
      "normal": 1.14,
      "special": 1.14
     },
-    "issue": 1.14,
+    "issue": 1.005,
     "latency": 10.0,
-    "source": "results10"
+    "source": "results10",
+    "sources": {
+     "xts": "XTS hardware (jasper-00710500-5831, runs 0025ae0426d0144c (timing); 0025ae04591bd080 (sched); loop top at byte 12, whole-line depths): issue"
+    }
    }
   }
  ]
