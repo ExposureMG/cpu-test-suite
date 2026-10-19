@@ -175,7 +175,7 @@ static int pair_measure(xts_ctx_t *ctx, int pi, int ci, int op, int d, sc_meas_t
 
 static const char *pen_verdict(double v, double err, int st, const char *pos, const char *zero, const char *neg)
 {
-  if (st != XTS_ST_PASS) return "UNDETERMINED";
+  if (!xts_status_measured(st)) return "UNDETERMINED";
   double th = 2 * err + 0.1;
   return v > th ? pos : v < -th ? neg : zero;
 }
@@ -247,7 +247,7 @@ static int run_pair(xts_ctx_t *ctx, const xts_case_t *c)
     }
     ref_penalty(ctx, pi, &rpen, &rerr, &rst, &rci, &rop);
   }
-  const char *why = st == XTS_ST_SKIP ? "not executed (host)" : st != XTS_ST_PASS ? "dep or ind did not pass the quality gate" : NULL;
+  const char *why = st == XTS_ST_SKIP ? "not executed (host)" : !xts_status_measured(st) ? "dep or ind did not pass the quality gate" : NULL;
   /* penalty record: fit = dep, ref = ind */
   {
     char buf[1000];

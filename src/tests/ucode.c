@@ -65,7 +65,7 @@ static int run_control(xts_ctx_t *ctx)
   const uq_cache_t *c = get_ctrl(ctx, &m);
   int st = c->status;
   int ok = m.ok && fabs(c->cyc - 1.0) <= 0.05;
-  if (st == XTS_ST_PASS && !ok) st = XTS_ST_FAIL;
+  if (xts_status_measured(st) && !ok) st = XTS_ST_FAIL;
   char buf[600];
   xts_json_t j;
   xj_init(&j, buf, sizeof buf);
@@ -139,7 +139,7 @@ static int run_insn(const xts_case_t *c, xts_ctx_t *ctx)
                                                                  .extra_json = b1 });
   }
   /* record 2: neighbour impact + flags */
-  int clean = st2 == XTS_ST_PASS && st1 != XTS_ST_SKIP;
+  int clean = xts_status_measured(st2) && st1 != XTS_ST_SKIP;
   const char *mc = "UNDETERMINED", *nb = "UNDETERMINED";
   if (clean && eu <= 0.3) {
     if (U - 2 * eu >= 1.75) mc = "yes";
@@ -156,7 +156,7 @@ static int run_insn(const xts_case_t *c, xts_ctx_t *ctx)
   xj_kv_double(&j, "extra_err", eu);
   xj_kv_str(&j, "microcoded", mc);
   xj_kv_str(&j, "neighbour", nb);
-  if (clean && st1 == XTS_ST_PASS) {
+  if (clean && xts_status_measured(st1)) {
     xj_kv_bool(&j, "unpipelined", T >= 2.5 && U < 1.25);
     xj_kv_bool(&j, "blocks_dual_issue", U - 2 * eu >= 0.75);
   }
@@ -164,7 +164,7 @@ static int run_insn(const xts_case_t *c, xts_ctx_t *ctx)
   if (!clean) xj_kv_str(&j, "why", st2 == XTS_ST_SKIP ? "not executed (host)" : "a measurement did not pass the quality gate");
   else if (eu > 0.3) xj_kv_str(&j, "why", "error bar > 0.3 cycles");
   int st = st2;
-  if (st == XTS_ST_PASS && !strcmp(mc, "UNDETERMINED")) st = XTS_ST_NOISY;
+  if (xts_status_measured(st) && !strcmp(mc, "UNDETERMINED")) st = XTS_ST_NOISY;
   xj_finish(&j);
   /* "fit" = X ; F*n, "ref" = F*(n+1); U = a - b + T(F) */
   xts_time_emit_diff(ctx, &ma.s, &ma.r, &mb.s, &mb.r, c->insn, &(xts_temit_t){ .metric = "extra", XTS_TE_VALUE(U),

@@ -230,7 +230,7 @@ static double lat_run(xts_ctx_t *ctx, lat_arg_t *a, xts_tspec_t *s, xts_tresult_
 }
 
 /* per-level references (ld chain), measured once per boot */
-typedef struct lref { int valid; double pure, idx, cr; int st; } lref_t;
+typedef struct lref { int valid; double pure, idx, cr; int st, attempts; int pst[3]; char pwhy[3][96]; } lref_t;
 static lref_t lrefs[MU_LV_N];
 static const lref_t *lat_refs(xts_ctx_t *ctx, int lv)
 {
@@ -248,15 +248,26 @@ static const lref_t *lat_refs(xts_ctx_t *ctx, int lv)
   a.f = &fld; a.g = g; a.c = &lchain; a.lv = p;
   xts_tspec_t s;
   xts_tresult_t r1, r2, r3;
-  a.mode = LM_REF_IDX;
-  R->idx = lat_run(ctx, &a, &s, &r1, "ld r4,0(r3) ; ldx r3,r3,r4");
-  a.mode = LM_REF_CR;
-  R->cr = lat_run(ctx, &a, &s, &r2, "ld ; cmpd cr1 ; mfocrf ; rlwinm ; ori ; ldx");
-  /* pure chase over the same chain: the pointer is at +8 */
-  xts_tspec_t sp = XTS_TSPEC_DEFAULT;
-  sp.iters = LAT_ITERS;
-  R->pure = mu_chase_measure(ctx, &lchain, p.warm, p.flush, p.rotate, &sp, &r3);
-  R->st = xts_status_worst(xts_status_worst(r1.status, r2.status), r3.status);
+  /* every lat.* record of this level carries the references' status: one noisy reference series would mark the whole
+   * level noisy for the rest of the boot, so measure them again (up to 3 times) until all three are usable */
+  for (int attempt = 0; attempt < 3; attempt++) {
+    a.mode = LM_REF_IDX;
+    R->idx = lat_run(ctx, &a, &s, &r1, "ld r4,0(r3) ; ldx r3,r3,r4");
+    a.mode = LM_REF_CR;
+    R->cr = lat_run(ctx, &a, &s, &r2, "ld ; cmpd cr1 ; mfocrf ; rlwinm ; ori ; ldx");
+    /* pure chase over the same chain: the pointer is at +8 */
+    xts_tspec_t sp = XTS_TSPEC_DEFAULT;
+    sp.iters = LAT_ITERS;
+    R->pure = mu_chase_measure(ctx, &lchain, p.warm, p.flush, p.rotate, &sp, &r3);
+    R->st = xts_status_worst(xts_status_worst(r1.status, r2.status), r3.status);
+    const xts_tresult_t *pr[3] = { &r1, &r2, &r3 };   /* idx, cr, pure: which part keeps a level noisy */
+    for (int k = 0; k < 3; k++) {
+      R->pst[k] = pr[k]->failed ? XTS_ST_FAIL : pr[k]->status;
+      snprintf(R->pwhy[k], sizeof R->pwhy[k], "%s", pr[k]->why);
+    }
+    R->attempts = attempt + 1;
+    if (xts_status_measured(R->st) || R->st == XTS_ST_SKIP) break;
+  }
   R->valid = 1;
   return R;
 }
@@ -642,6 +653,18 @@ static int run_lat(const xts_case_t *c, xts_ctx_t *ctx)
   xj_kv_double(&d.j, "ref_pure", R->pure);
   xj_kv_double(&d.j, a.mode == LM_GPR ? "ref_idx" : "ref_cr", a.mode == LM_GPR ? R->idx : R->cr);
   xj_kv_str(&d.j, "ref_status", xts_status_name(R->st));
+  xj_kv_int(&d.j, "ref_attempts", R->attempts);
+  if (!xts_status_measured(R->st)) {
+    static const char *const pn[3] = { "idx", "cr", "pure" };
+    xj_key(&d.j, "ref_parts");
+    xj_obj(&d.j);
+    for (int k = 0; k < 3; k++) {
+      char v[128];
+      snprintf(v, sizeof v, "%s%s%s", xts_status_name(R->pst[k]), R->pwhy[k][0] ? ": " : "", R->pwhy[k]);
+      xj_kv_str(&d.j, pn[k], v);
+    }
+    xj_end(&d.j);
+  }
   xj_kv_int(&d.j, "V", g.V);
   xj_kv_int(&d.j, "anchors", (int64_t)p.n);
   if (dk) xj_kv_int(&d.j, "data_kind", dk);

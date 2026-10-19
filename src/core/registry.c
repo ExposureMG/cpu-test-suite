@@ -252,6 +252,8 @@ int xts_status_rank(int st)
   return (st >= 0 && st < XTS_ST_COUNT) ? rank[st] : -1;
 }
 
+int xts_status_measured(int st) { return st == XTS_ST_PASS || st == XTS_ST_NONLINEAR; }
+
 int xts_status_worst(int a, int b)
 {
   int ra = xts_status_rank(a), rb = xts_status_rank(b);

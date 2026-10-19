@@ -94,7 +94,7 @@ static int run_control(xts_ctx_t *ctx, int emit)
   xj_kv_double(&j, "err", m1.err);
   xts_time_fit_json(&j, "fit2", &m2.s, &m2.r, 2);         /* "fit" is the 1 word/unit stream */
   xj_finish(&j);
-  if (st == XTS_ST_PASS && !ok) st = XTS_ST_FAIL;
+  if (xts_status_measured(st) && !ok) st = XTS_ST_FAIL;
   xts_time_emit_ex(ctx, &m1.s, &m1.r, XI_addi, &(xts_temit_t){ .metric = "issue_cost", .extra_json = buf, .status = st });
   return 0;
 }
@@ -141,7 +141,7 @@ static const char *classify(double P, double eP, const ip_cache_t *a, const ip_c
   *ov_out = *err_out = NAN;
   *why = NULL;
   if (st == XTS_ST_SKIP) { *why = "not executed (host)"; return "UNDETERMINED"; }
-  if (st != XTS_ST_PASS) { *why = "a measurement did not pass the quality gate"; return "UNDETERMINED"; }
+  if (!xts_status_measured(st)) { *why = "a measurement did not pass the quality gate"; return "UNDETERMINED"; }
   if (!ctrl_ok) { *why = "filler control failed"; return "UNDETERMINED"; }
   double ta = a->cyc, tb = b->cyc, mn = fmin(ta, tb), mx = fmax(ta, tb);
   if (!(mn > 0)) { *why = "alone cost missing"; return "UNDETERMINED"; }
@@ -202,7 +202,7 @@ static int run_pair(xts_ctx_t *ctx, int ca, int cb)
     if (why) xj_kv_str(&j, "why", why);
     xj_kv_bool(&j, "filler_control_ok", ctrl_ok);
     xj_kv_double(&j, "minus_filler", m[o].cyc - 2 * ctrl.cyc);   /* same-shape differential against F F */
-    if (m[0].ok && m[1].ok && all_st == XTS_ST_PASS) {
+    if (m[0].ok && m[1].ok && xts_status_measured(all_st)) {
       int dep = fabs(d) > 2 * de && fabs(d) > 0.1;
       xj_kv_bool(&j, "order_dependent", dep);
       xj_kv_double(&j, "ab_minus_ba", d);
@@ -212,7 +212,7 @@ static int run_pair(xts_ctx_t *ctx, int ca, int cb)
       double dd = m[o].cyc - 2 * ta->cyc, ee = m[o].err + 2 * ta->err;
       xj_kv_bool(&j, "diag_ok", fabs(dd) <= 2 * ee + 0.05);
       xj_kv_double(&j, "diag_minus_alone", dd);
-      if (st == XTS_ST_PASS && fabs(dd) > 2 * ee + 0.05) st = XTS_ST_FAIL;
+      if (xts_status_measured(st) && fabs(dd) > 2 * ee + 0.05) st = XTS_ST_FAIL;
     }
     {   /* implicit state shared by the members (CR via record forms, CA, LR/CTR, ...) is a real dependence here */
       const xts_insn_t *da = &xts_isa[first->insn], *db = &xts_isa[second->insn];

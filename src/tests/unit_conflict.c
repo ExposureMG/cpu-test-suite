@@ -154,7 +154,7 @@ static int run_mix(xts_ctx_t *ctx, int ia, int ib)
     eo[r] = span > 0 ? err / span : NAN;
     const char *v = "UNDETERMINED", *why = NULL;
     if (st == XTS_ST_SKIP) why = "not executed (host)";
-    else if (st != XTS_ST_PASS) why = "a measurement did not pass the quality gate";
+    else if (!xts_status_measured(st)) why = "a measurement did not pass the quality gate";
     else if (!(span > 4 * err)) why = "serial and parallel bounds too close for the error bar";
     else if (m[r].cyc < Q[r] - 2 * err) { v = "anomaly_faster"; why = "faster than the parallel bound"; }
     else if (m[r].cyc > S[r] + 2 * err) { v = "interfere"; why = "slower than serial"; }
@@ -221,7 +221,7 @@ static int run_mix(xts_ctx_t *ctx, int ia, int ib)
   for (int r = 0; r < nr; r++) xj_double(&j, ov[r]);
   xj_end(&j);
   int st = all_st;
-  if (st == XTS_ST_PASS && best < 0) st = XTS_ST_NOISY;
+  if (xts_status_measured(st) && best < 0) st = XTS_ST_NOISY;
   xj_finish(&j);
   /* value = the best ratio's overlap (not the cycle figure): the fit shown is that ratio's, statistics stay null */
   xts_time_emit_value(ctx, best >= 0 ? &m[best].s : NULL, best >= 0 ? &m[best].r : NULL, -1, best_ov,
@@ -270,7 +270,7 @@ static int run_busy(xts_ctx_t *ctx, int ia, int ib)
   double pen = extra[last], err = m[last].err + ks[last] * B->err;
   const char *v = "UNDETERMINED", *why = NULL;
   if (all_st == XTS_ST_SKIP) why = "not executed (host)";
-  else if (all_st != XTS_ST_PASS) why = "a measurement did not pass the quality gate";
+  else if (!xts_status_measured(all_st)) why = "a measurement did not pass the quality gate";
   else if (ks[last] * tb < ta) why = "not enough B work to cover A";
   else {
     double lo = fmax(1.5, 0.2 * ta), hi = 0.8 * ta;
@@ -301,7 +301,7 @@ static int run_busy(xts_ctx_t *ctx, int ia, int ib)
   xj_kv_str(&j, "verdict", v);
   if (why) xj_kv_str(&j, "why", why);
   int st = all_st;
-  if (st == XTS_ST_PASS && !strcmp(v, "UNDETERMINED")) st = XTS_ST_NOISY;
+  if (xts_status_measured(st) && !strcmp(v, "UNDETERMINED")) st = XTS_ST_NOISY;
   xj_finish(&j);
   /* value = the busy time A adds to B's stream, not a per-unit cycle figure */
   xts_time_emit_value(ctx, &m[last].s, &m[last].r, sc_classes[ca].insn, pen,

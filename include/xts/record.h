@@ -38,6 +38,9 @@ const char *xts_status_name(int st);
 int xts_status_worst(int a, int b);
 int xts_status_rank(int st);      /* 0 (pass) .. 9 (crash); -1 for a value outside the enum */
 int xts_status_from_name(const char *name);   /* -1 if unknown */
+/* 1 for pass and nonlinear: a measurement whose value can be used (a nonlinear fit is repeatable, its slope the
+ * least-squares average). Families that derive verdicts from several measurements gate on this, not on pass. */
+int xts_status_measured(int st);
 
 /* ---- vocabularies (checked by xts_emit in host builds: unknown names are logged once and flagged in the detail as
  * "vocab_warning", the record is still written) ----
