@@ -407,12 +407,14 @@ static xts_mres_t str_load(uint32_t w, const xts_state_t *in, xts_mem_t *m, xts_
                            int indexed)
 {
   unsigned rt = XM_RD(w), ra = XM_RA(w), rb = XM_RB(w);
-  uint32_t nr = (n + 3) / 4;
   (void)in;
   if (indexed) {
-    if (!n) return XTS_M_OK;                      /* RT undefined for n=0 (kept) */
+    /* Xenon: an XER byte count of 0 (RT architecturally undefined) behaves exactly like a count of 1 - one byte into
+     * the top of RT's low word, RT = RA or RB is illegal (semantic run 2026-10-19, lswx.count0: 14 of 14 cases) */
+    if (!n) n = 1;
     if (rt == ra || rt == rb) return XTS_M_ILLEGAL;
   }
+  uint32_t nr = (n + 3) / 4;
   for (uint32_t i = 0; i < nr; i++) {             /* RA (and RB for lswx) must not be one of the registers loaded */
     unsigned r = (rt + i) & 31;
     if (r == ra || (indexed && r == rb)) return XTS_M_ILLEGAL;

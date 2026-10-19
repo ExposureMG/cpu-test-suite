@@ -77,9 +77,11 @@ HTEST(mldst_string)
   HT_EQ_U64(O.gpr[8], 0x03040506);
   HT_EQ_U64(O.gpr[9], 0x07000000);
   HT_EQ_U64(run(xts_enc(XI_lswx, 0, 4, 3, 4)), XTS_M_ILLEGAL);
-  S.xer = 0;                                              /* n = 0: nothing happens */
+  S.xer = 0;                                              /* n = 0 behaves as n = 1 on Xenon (hardware) */
   HT_EQ_U64(run(xts_enc(XI_lswx, 0, 8, 3, 4)), XTS_M_OK);
-  HT_EQ_U64(memcmp(O.gpr, S.gpr, sizeof S.gpr), 0);
+  HT_EQ_U64(O.gpr[8], 0x03000000);                       /* the byte at EA = BASE+3, rest of RT zero */
+  HT_EQ_U64(O.gpr[9], S.gpr[9]);
+  HT_EQ_U64(run(xts_enc(XI_lswx, 0, 3, 3, 4)), XTS_M_ILLEGAL);   /* RT = RA traps even with n = 0 */
   /* stswx r12,r3,r4 with n=6 at BASE+3: bytes from the low words of r12, r13 */
   S.gpr[12] = 0xFFFFFFFF01020304ull;
   S.gpr[13] = 0x0000000005060708ull;

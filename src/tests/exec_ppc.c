@@ -346,6 +346,7 @@ static int run_str(const xts_case_t *c, xts_ctx_t *ctx)
     }
     banned |= 1u << ra;
     nregs = (bytes + 3) / 4;
+    if (!nregs && (which == LSWX || which == STSWX)) nregs = 1;   /* count 0 still writes RT (lswx): keep r1/r2/r13 out */
     for (int t = 0; t < 500; t++) {
       int s = (int)xts_rng_below(r, 32), ok = 1;
       for (int i = 0; i < nregs; i++)

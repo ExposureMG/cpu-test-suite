@@ -27,11 +27,13 @@ family) is either fixed in the model or recorded here with its evidence.
   nothing; plain hand-over is coherent (every other variant 0); the reader's own dcbf removes the line. Fixed in
   src/exec/exec_console.c: the test core drops its copies of the shared buffers before every case, and xts_dcbf_range /
   xts_prep flush on the test core too. Second semantic run: every load family 0 failures.
-- **lswx with XER byte count 0** (second semantic run, word 7F055C2A = lswx r24,r5,r11, SF=0, EA = scratch+0x84): the
-  model leaves RT unchanged (architecturally undefined), the CPU returned 0x00000000BB000000 - the byte at EA in the top
-  byte of the low word, as if one byte were loaded. One case; the run's other count-0 cases (if any) passed but carry no
-  detail. Not changed in the model yet: exec.ppc lswx.count0#0-7 (and stswx.count0 as a control) now run targeted
-  count-0 cases at several EAs and RT values, under both SF settings of the semantic profile.
+- **lswx with XER byte count 0 behaves as a count of 1** (hardware fact, semantic run 2026-10-19, lswx.count0#0-7 at
+  SF=64 and SF=32: 14 of 14 meaningful cases, plus the earlier lswx#18). The byte at EA lands in the top byte of RT's
+  low word, the rest of RT is zero (e.g. EA = scratch+0x85: 0x00000000C8000000), and RT = RA or RT = RB raises the
+  illegal-instruction program interrupt (cause 08) as for a non-zero count. The architecture leaves RT undefined. The
+  model now treats n = 0 as 1. stswx with count 0 stores nothing (16 of 16, architected). Two cases had RT = r2,
+  which the slot never compares (r1/r2/r13 belong to the C runtime); the generator now keeps r1/r2/r13 out of RT for
+  count-0 cases too.
 - **vmsum4fp128 1-ULP case (smoke run vmsum4fp128#12): resolved** by the semantic run of 2026-10-19 - the one's
   complement sum's reference sign is the majority product sign, not the first product's (that case has three negative
   products, so the positive tiny one costs one LSB). See "vmx128 (mvmx)".
