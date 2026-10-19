@@ -131,7 +131,7 @@ HTEST(mfp_vec_estimates)
   EQV(O.vr[1], 0x41000000, 0x3E000000, 0x00000000, 0x00000000);
   S.vr[3] = xts_vr4(0xC3140000, 0x43000000, 0x80000000, 0x00000001);   /* -148, 128, -0, denormal */
   run(xts_enc(XI_vexptefp128, 0, 1, 3));
-  EQV(O.vr[1], 0x00000002, 0x7F800000, 0x3F800000, 0x3F800000);
+  EQV(O.vr[1], 0x00000000, 0x7F800000, 0x3F800000, 0x3F800000);   /* Xenon flushes the denormal result also with NJ=0 */
   reset(1);
   S.vr[3] = xts_vr4(0xC3140000, 0x43000000, 0x80000000, 0x00000001);
   run(xts_enc(XI_vexptefp128, 0, 1, 3));

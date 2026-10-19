@@ -4,8 +4,10 @@
  * overflow / underflow; MSR[FE0,FE1] = 0 in our runs so no interrupt), Rc=1 -> CR1 = FPSCR[FX FEX VX OX].
  * Arithmetic goes through fp_core (SoftFloat binary128 round-to-odd + PowerPC rounding); no host FPU arithmetic.
  * Xenon facts (results4, KNOWN.md "## fp (mfp)"):
- *  - single-precision add/sub/mul/madd family: a finite nonzero operand outside the normal single range gives the default
- *    QNaN with no exception (after NaN, invalid and infinity handling); fdivs/fsqrts compute in double instead.
+ *  - single-precision add/sub/mul/madd family: a finite nonzero operand outside the single range (|x| < 2^-149 or
+ *    >= 2^128; single denormal magnitudes are fine) gives the default QNaN with no exception (after NaN, invalid and
+ *    infinity handling); fdivs/fsqrts compute in double instead.
+ *  - a result delivered exponent-adjusted by enabled underflow classifies as normal in FPRF.
  *  - disabled overflow sets FR.
  *  - fctiw[z] results are sign-extended to 64 bits; FPRF is left unchanged by fcti* (architecturally undefined).
  *  - mffs returns 0xFFF80000 in the high word; FPSCR[NI] and the reserved bit 20 cannot be set. */
@@ -29,12 +31,23 @@ static uint32_t fprf_single(uint64_t b)
   return xm_fprf_f64(b);
 }
 
-/* finite nonzero double that is not a normal single (Xenon single-precision operand check) */
+/* FPRF of a rounded result: a result delivered exponent-adjusted by an enabled underflow (UE=1) is normalised and
+ * classifies by its double form (hardware: frsp/fmuls/fadds of tiny values with UE=1 give FPRF=normal, never denormal,
+ * even when the adjusted value is still below the single range) */
+static uint32_t fprf_res(const xf_res_t *r, int prec, uint32_t fpscr)
+{
+  if ((r->exc & XTS_FPSCR_UX) && (fpscr & XTS_FPSCR_UE)) return xm_fprf_f64(r->bits);
+  return prec == 24 ? fprf_single(r->bits) : xm_fprf_f64(r->bits);
+}
+
+/* finite nonzero double outside what the Xenon single-precision datapath accepts: magnitude below the smallest single
+ * denormal (double exponent < 874, |x| < 2^-149) or at/above 2^128 (exponent > 1150). Single denormal magnitudes
+ * (exponents 874-896, any low mantissa bits) are ordinary operands (hardware, 2026 semantic run). */
 static int bad_single(uint64_t b)
 {
   if (xd_isnan(b) || xd_isinf(b) || xd_iszero(b)) return 0;
   int e = xd_exp(b);
-  return e < 897 || e > 1150;
+  return e < 874 || e > 1150;
 }
 
 enum { K_ADD, K_SUB, K_MUL, K_DIV, K_SQRT, K_MADD, K_MSUB, K_NMADD, K_NMSUB };
@@ -137,7 +150,7 @@ static xts_mres_t arith(const xts_insn_t *d, uint32_t w, const xts_state_t *in, 
   xf_res_t r = xf_round(&e, prec, fpscr);
   if (neg) r.bits ^= XD_SIGN;
   out->fpr[t] = r.bits;
-  out->fpscr = xf_fpscr_set(fpscr, r.fr, r.fi, prec == 24 ? fprf_single(r.bits) : xm_fprf_f64(r.bits), r.exc);
+  out->fpscr = xf_fpscr_set(fpscr, r.fr, r.fi, fprf_res(&r, prec, fpscr), r.exc);
   return done(d, w, out);
 }
 
@@ -193,7 +206,7 @@ static xts_mres_t m_frsp(const xts_insn_t *d, uint32_t w, const xts_state_t *in,
   xf_t e = xf_from_f128(f64_to_f128(f));
   xf_res_t r = xf_round(&e, 24, fpscr);
   out->fpr[t] = r.bits;
-  out->fpscr = xf_fpscr_set(fpscr, r.fr, r.fi, fprf_single(r.bits), r.exc);
+  out->fpscr = xf_fpscr_set(fpscr, r.fr, r.fi, fprf_res(&r, 24, fpscr), r.exc);
   return done(d, w, out);
 }
 XTS_MODEL("frspx", m_frsp);

@@ -1,8 +1,9 @@
 /* Vector estimate instructions vrefp vrsqrtefp vexptefp vlogefp and their VMX128 forms (owner: mfp).
  * Only results the architecture fixes are modelled: the PEM special-value tables, vexptefp of an integral input (exact
  * unless the result is 0 or +inf), vlogefp of 2^y (exact, y in [-149, 127]), and results whose magnitude makes the
- * value certain (overflow to infinity, NJ flush to zero). If any lane needs the hardware table the handler returns
- * XTS_M_UNIMPLEMENTED (semantic check: skip; KNOWN.md "## fp (mfp)"). results4 (24 cases, 96 lanes per op) shows the
+ * value certain (overflow to infinity, flush to zero). vexptefp flushes denormal RESULTS to +0 whatever VSCR[NJ] is
+ * (console run, Jasper). If any lane needs the hardware table the handler returns XTS_M_UNIMPLEMENTED (semantic check:
+ * skip; KNOWN.md "## fp (mfp)"). results4 (24 cases, 96 lanes per op) shows the
  * legacy and VMX128 forms agree on every lane they share and SNaN -> QNaN with the payload kept. */
 #include "fp_core.h"
 #include "vfp.h"
@@ -32,7 +33,10 @@ static int lane_est(int k, uint32_t x, int nj, uint32_t *r)
     if (mag == XS_INF) { *r = s ? 0 : XS_INF; return 1; }
     if (mag == 0) { *r = 0x3F800000u; return 1; }
     if (!s && be < 127 - 100) { *r = 0x3F800000u; return 1; }   /* 0 < x < 2^-100 (results4: denormals, 2^-126) */
-    if (s && be >= 127 + 7 && nj) { *r = 0; return 1; }         /* x <= -128: result < 2^-126 -> flushed */
+    /* Xenon flushes every denormal vexptefp result to +0, also with VSCR[NJ]=0 (console run, Jasper: 2^-127 .. 2^-149
+     * integral and non-integral inputs all give 0, 2^-126 is still exact). x <= -127 puts the result below 2^-126 by
+     * more than the estimate error (2^-12), so the flush is certain; (-127, -126) is left to the hardware table. */
+    if (s && mag >= 0x42FE0000u) { *r = 0; return 1; }           /* x <= -127 */
     /* integral x? */
     if (be < 127) return 0;                                      /* 0 < |x| < 1: not integral */
     int e = be - 127;
@@ -43,7 +47,7 @@ static int lane_est(int k, uint32_t x, int nj, uint32_t *r)
     if (n >= 128) { *r = XS_INF; return 1; }
     if (n <= -150) { *r = 0; return 1; }
     if (n >= -126) { *r = (uint32_t)(n + 127) << 23; return 1; }
-    *r = nj ? 0 : 1u << (n + 149);                               /* denormal 2^n */
+    *r = 0;                                                      /* denormal 2^n (n < -126): flushed to +0 */
     return 1;
   }
   default:  /* E_LOG2 */

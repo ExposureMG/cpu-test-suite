@@ -1,13 +1,14 @@
 /* VMX128-only model (owner: mvmx): the tied-VD fused multiply-adds, the non-IEEE dot products vmsum3fp128/vmsum4fp128,
  * vpermwi128, vrlimi128 and the D3D pack/unpack pair vpkd3d128/vupkd3d128.
  *
- * Sources, in order of trust: results4 (24 cases each, all matched), fmastat results17 (FMA operand order, 256 lanes
- * per op), xenia-canary ppc_emit_altivec.cc + x64_seq_vector.cc (D3D formats and placements). What results4 does not
- * cover is listed in src/model/KNOWN.md, section "vmx128 (mvmx)". Every helper here is file-local: no dependency on
- * the other FP model files.
+ * Sources, in order of trust: results4 (24 cases each, all matched), the XTS semantic run of 2026-10-19 (Jasper, PVR
+ * 00710500: 151 vmsum and 48 vpkd3d128 FLOAT16_4 records, all matched, replayed by host/tests/t_hw_sem_vmx128.c),
+ * fmastat results17 (FMA operand order, 256 lanes per op), xenia-canary ppc_emit_altivec.cc + x64_seq_vector.cc (D3D
+ * formats and placements). What the hardware data does not cover is listed in src/model/KNOWN.md, section "vmx128
+ * (mvmx)". Every helper here is file-local: no dependency on the other FP model files.
  *
- * Vector conventions: w[0] = element 0 = x (most significant word). VMX128 vector ops never touch FPSCR; they always
- * round to nearest even and honour VSCR[NJ]. */
+ * Vector conventions: w[0] = element 0 = x (most significant word). VMX128 vector ops never touch FPSCR and honour
+ * VSCR[NJ]; the FMAs round to nearest even, the dot products and the FLOAT16 packs truncate. */
 #include <xts/model.h>
 #include "softfloat.h"
 
@@ -91,22 +92,25 @@ XTS_MODEL("vnmsubfp128", m_vnmsubfp128);
 
 /* ================================================================================================ dot products
  * vmsum3fp128 (lanes x,y,z; w is ignored) and vmsum4fp128 (x,y,z,w); the scalar result is splatted to all four words.
- * Not an IEEE sum. The formulation below matches all 48 results4 cases (24 + 24); it was picked by a search over
- * summation order x product rounding x accumulator width x final rounding x sign handling (KNOWN.md):
+ * Not an IEEE sum. The rule below matches all 48 results4 cases and all 151 vmsum records of the 2026-10-19 semantic
+ * run (Jasper, PVR 00710500; targeted sign mixes, x + (-x), zero products, overflowing products, NJ-forced denormals):
  *   1. NJ=1 flushes denormal inputs to signed zeros (NJ=0 keeps them: inf*denormal = inf in results4).
  *   2. Any NaN input -> 0x7FC00000 (default NaN, an SNaN payload is not kept). inf*0 or inf-inf -> 0x7FC00000;
  *      otherwise an infinite product gives that infinity.
- *   3. Exact 48-bit products p_i = m_i * 2^e_i, aligned (truncated) to the LSB of the largest exponent sum.
- *   4. One's-complement accumulation relative to the sign of p0 WITHOUT the end-around carry: products with p0's
- *      sign add their aligned magnitude, the others add ~magnitude (= -magnitude - 1). A negative total flips the
- *      sign and is complemented back (~total). So every opposite-signed product (even a zero) costs one LSB of the
- *      accumulator when the total keeps p0's sign: -1.5 + -0.75 + (+0) = 0xC00FFFFF.
- *   5. Truncation (toward zero) to 24 bits. Exponent overflow -> QNaN with the result's sign (0x7FC00000 or
- *      0xFFC00000), never infinity. A result below 2^-126 -> signed zero, whatever NJ says.
- * Free parameters the data does not fix: the accumulator may keep 0..40 more bits below the aligned LSB (VMSUM_GUARD,
- * all give 48/48), and the products may be rounded to 24 bits first (also 48/48). */
-#define VMSUM_GUARD 0
-_Static_assert(VMSUM_GUARD >= 0 && VMSUM_GUARD <= 12, "48-bit products << VMSUM_GUARD must fit the 64-bit accumulator");
+ *   3. Exact 48-bit products. The accumulator LSB is 2^(emax - 28), emax = the largest exponent sum ea+eb of the
+ *      NONZERO products (a zero product's exponent is ignored); every product is truncated to that LSB. Products
+ *      shifted out completely still take part in step 4 with magnitude 0. All products zero -> +0.
+ *   4. One's-complement accumulation without the end-around carry, relative to a reference sign R that is the
+ *      MAJORITY sign of the products (each product's sign is sign(a) ^ sign(b), zero products included); a tie
+ *      (2 against 2 in vmsum4) gives R = +. Products of sign R add their magnitude, the others add ~magnitude
+ *      (= -magnitude - 1). A negative total flips the sign and is complemented back (~total). So every product of
+ *      the minority sign costs one accumulator LSB when the total keeps sign R, and nothing when it flips:
+ *      -1.5 + -0.75 + (+0) = 0xC00FFFFF, x + (-x) + y + (-y) = -2^(emax-28), (+H) + (-H) + (-s) = +0 in vmsum3.
+ *   5. A zero magnitude is +0. Otherwise truncation (toward zero) to 24 bits. Exponent overflow -> QNaN with the
+ *      result's sign (0x7FC00000 or 0xFFC00000), never infinity. A result in [2^-127, 2^-126) keeps its 23 fraction
+ *      bits with an exponent field of 0 (NOT the IEEE denormal: the leading 1 is just dropped), whatever NJ says; a
+ *      smaller result is a signed zero. */
+#define VMSUM_ACC_BITS 28
 static uint32_t vmsum(const xts_vr_t *va, const xts_vr_t *vb, int n, int nj)
 {
   uint32_t a[4], b[4];
@@ -128,33 +132,36 @@ static uint32_t vmsum(const xts_vr_t *va, const xts_vr_t *vb, int n, int nj)
   if (inf_neg) return F_SIGN | F_EXP;
   /* products: m (< 2^48) * 2^e */
   uint64_t pm[4] = { 0 };
-  int pe[4] = { 0 }, ps[4] = { 0 }, emax = -100000;
+  int pe[4] = { 0 }, ps[4] = { 0 }, emax = -100000, nneg = 0;
   for (int i = 0; i < n; i++) {
     uint32_t ea = (a[i] >> 23) & 0xFF, eb = (b[i] >> 23) & 0xFF;
     uint64_t ma = (a[i] & F_FRAC) | (ea ? 0x800000u : 0), mb = (b[i] & F_FRAC) | (eb ? 0x800000u : 0);
     pm[i] = ma * mb;
     pe[i] = (int)(ea ? ea : 1) + (int)(eb ? eb : 1) - 254 - 46;
     ps[i] = (int)((a[i] ^ b[i]) >> 31);
-    if (pe[i] > emax) emax = pe[i];
+    nneg += ps[i];
+    if (pm[i] && pe[i] > emax) emax = pe[i];
   }
-  int lsb = emax - VMSUM_GUARD;
+  if (emax == -100000) return 0;                  /* all products zero */
+  int ref = 2 * nneg > n;                         /* majority sign, tie -> + */
+  int lsb = emax + 46 - VMSUM_ACC_BITS;           /* weight of the accumulator LSB; products are >= 2^(emax+46) */
   int64_t acc = 0;
   for (int i = 0; i < n; i++) {
-    int sh = lsb - pe[i];
-    uint64_t v = sh >= 64 ? 0 : (sh >= 0 ? pm[i] >> sh : pm[i] << -sh);
-    acc += ps[i] == ps[0] ? (int64_t)v : -(int64_t)v - 1;
+    int sh = lsb - pe[i];                         /* >= 46 - VMSUM_ACC_BITS > 0 */
+    uint64_t v = sh >= 64 ? 0 : pm[i] >> sh;
+    acc += ps[i] == ref ? (int64_t)v : -(int64_t)v - 1;
   }
-  uint32_t sign = (uint32_t)ps[0] << 31;
+  uint32_t sign = (uint32_t)ref << 31;
   uint64_t mag;
   if (acc < 0) { sign ^= F_SIGN; mag = (uint64_t)(-(acc + 1)); }
   else mag = (uint64_t)acc;
-  if (!mag) return sign;
+  if (!mag) return 0;
   int nb = 64 - __builtin_clzll(mag);
   int e = lsb + nb - 1;                           /* unbiased exponent of the MSB */
   uint32_t frac = (uint32_t)(nb > 24 ? mag >> (nb - 24) : mag << (24 - nb)) & F_FRAC;   /* truncate */
   if (e > 127) return sign | F_DNAN;
-  if (e < -126) return sign;
-  return sign | (uint32_t)(e + 127) << 23 | frac;
+  if (e < -127) return sign;
+  return sign | (uint32_t)(e + 127) << 23 | frac;  /* e = -127: exponent field 0 */
 }
 
 static xts_mres_t vmsum128(int n, uint32_t w, const xts_state_t *in, xts_state_t *out)
@@ -218,12 +225,15 @@ XTS_MODEL("vrlimi128", m_vrlimi128);
  *   0 D3DCOLOR      P.w = W<<24 | X<<16 | Y<<8 | Z            (each 0..255)
  *   1 NORMSHORT2    P.w = X<<16 | Y                           (-32767..32767)
  *   2 2_10_10_10    P.w = W<<30 | Z<<20 | Y<<10 | X           (XYZ -511..511, W 0..3)
- *   3 FLOAT16_2     P.w = h(X)<<16 | h(Y)                     (truncating, as xenia)
+ *   3 FLOAT16_2     P.w = h(X)<<16 | h(Y)
  *   4 NORMSHORT4    P.z = X<<16 | Y, P.w = Z<<16 | W
- *   5 FLOAT16_4     P.z = h(X)<<16 | h(Y), P.w = h(Z)<<16 | h(W)   (round to nearest even, as xenia)
+ *   5 FLOAT16_4     P.z = h(X)<<16 | h(Y), P.w = h(Z)<<16 | h(W)
  *   6 4_20_20_20    P.z:P.w = W<<60 | Z<<40 | Y<<20 | X       (XYZ -(2^19-1)..2^19-1, W 0..15)
- * Types 0-5 are confirmed by results4 (saturating and NaN lanes only); type 6 and the float16 rounding of in-range
- * values are xenia's. Type 7 and pack size 0 are not modelled (XTS_M_UNIMPLEMENTED). */
+ * h() TRUNCATES the 13 dropped fraction bits for both FLOAT16 formats (hardware fact, semantic run 2026-10-19: 48
+ * FLOAT16_4 records, every pack size and z, 66 lanes where xenia's round-to-nearest-even is 1 too high, 0 lanes that
+ * round up; the FLOAT16_2 truncation is xenia's and agrees with results4). Types 0-5 are confirmed by results4
+ * (saturating and NaN lanes only), type 5 in-range lanes by the semantic run; type 6 is xenia's. Type 7 and pack size
+ * 0 are not modelled (XTS_M_UNIMPLEMENTED). */
 static uint32_t d3d_int(uint32_t b, int32_t lo, int32_t hi, int32_t nanv, int bits, int *sat)
 {
   int32_t v;
@@ -238,15 +248,12 @@ static uint32_t d3d_int(uint32_t b, int32_t lo, int32_t hi, int32_t nanv, int bi
   return (uint32_t)v & ((1u << bits) - 1);
 }
 
-static uint32_t xenos_half(uint32_t b, int rne)
+static uint32_t xenos_half(uint32_t b)
 {
   uint32_t a = b & F_ABS, r;
   if (a >= 0x47FFE000u) r = 0x7FFF;               /* also inf and NaN */
-  else {
-    r = a < 0x38800000u ? 0 : a + 0xC8000000u;
-    if (rne) r += 0xFFF + ((r >> 13) & 1);
-    r = (r >> 13) & 0x7FFF;
-  }
+  else if (a < 0x38800000u) r = 0;                /* below 2^-14: no half denormals */
+  else r = ((a + 0xC8000000u) >> 13) & 0x7FFF;    /* rebias 127 -> 15, truncate */
   return r | ((b >> 16) & 0x8000);
 }
 
@@ -270,15 +277,15 @@ static int d3d_pack(int type, const xts_vr_t *v, uint32_t p[4], int *sat)
            d3d_int(x[1], -511, 511, -512, 10, sat) << 10 | d3d_int(x[0], -511, 511, -512, 10, sat);
     return 1;
   case 3:
-    p[3] = xenos_half(x[0], 0) << 16 | xenos_half(x[1], 0);
+    p[3] = xenos_half(x[0]) << 16 | xenos_half(x[1]);
     return 1;
   case 4:
     p[2] = d3d_int(x[0], -32767, 32767, -32768, 16, sat) << 16 | d3d_int(x[1], -32767, 32767, -32768, 16, sat);
     p[3] = d3d_int(x[2], -32767, 32767, -32768, 16, sat) << 16 | d3d_int(x[3], -32767, 32767, -32768, 16, sat);
     return 1;
   case 5:
-    p[2] = xenos_half(x[0], 1) << 16 | xenos_half(x[1], 1);
-    p[3] = xenos_half(x[2], 1) << 16 | xenos_half(x[3], 1);
+    p[2] = xenos_half(x[0]) << 16 | xenos_half(x[1]);
+    p[3] = xenos_half(x[2]) << 16 | xenos_half(x[3]);
     return 1;
   case 6: {
     const int32_t m = (1 << 19) - 1;

@@ -31,14 +31,9 @@ family) is either fixed in the model or recorded here with its evidence.
   model leaves RT unchanged (architecturally undefined), the CPU returned 0x00000000BB000000 - the byte at EA in the top
   byte of the low word, as if one byte were loaded. One case; the run's other count-0 cases (if any) passed but carry no
   detail. Not changed in the model yet: needs targeted count-0 cases (several EAs, RT values, SF=0/1).
-- **vmsum4fp128: hardware is 1 ULP lower than the model on a sign-mixed case** (first console smoke run, 2026-10-19,
-  Jasper, PVR 0x00710500; exec.vmx128 case vmsum4fp128#12, word 173945D8, sf=64, VSCR 0). Inputs (VA = VD = v89,
-  VB = v8): A = AF3D0257 96C316AE 37EFC7C9 C5106AAB, B = 80000001 007FFFFF BF000000 4F000000. Model D4906AAB in every
-  lane, hardware D4906AAA. The dominant product (lane 3, about -4.96e12) is negative while the first product (lane 0,
-  a tiny negative times a negative denormal) is positive; the model sums in one's complement relative to the FIRST
-  product's sign, so the reference sign is the likely error (alternatives: the largest product's sign, or denormal
-  B lanes handled differently with NJ=0). Not fixed yet: wait for the semantic profile's targeted vmsum cases (sign
-  mixes, denormals, aliasing) and pick the rule that matches all of them.
+- **vmsum4fp128 1-ULP case (smoke run vmsum4fp128#12): resolved** by the semantic run of 2026-10-19 - the one's
+  complement sum's reference sign is the majority product sign, not the first product's (that case has three negative
+  products, so the positive tiny one costs one LSB). See "vmx128 (mvmx)".
 
 ## vint (mvint)
 Files: `src/model/vint.c` (element arithmetic, compares, shifts, logicals, splats, mfvscr/mtvscr), `vperm.c` (merge, pack,
@@ -142,34 +137,35 @@ Unverified model choices (no hardware data; first thing to check when a console 
 ## vmx128 (mvmx)
 `src/model/vmx128.c`: vmaddfp128 vmaddcfp128 vnmsubfp128 vmsum3fp128 vmsum4fp128 vpermwi128 vrlimi128 vpkd3d128
 vupkd3d128. results4: 216/216 match (24 each). fmastat results17: 192/192 VMX128 FMA cases match (replayed through
-xts-model-replay). Open disagreements: none.
+xts-model-replay). Semantic run 2026-10-19 (Jasper, PVR 00710500): all 151 vmsum records (68 + 83) and all 48
+vpkd3d128 records match; host/tests/t_hw_sem_vmx128.c replays them. Open disagreements: none.
 
 **FMA.** Fused, one rounding, always round-to-nearest-even, FPSCR untouched. Orders: vmaddfp128 `VD = VA*VB + VD`,
 vmaddcfp128 `VD = VA*VD + VB`, vnmsubfp128 `VD = -(VA*VB - VD)`, negated after rounding (exact cancellation -> -0).
 NaN: first NaN of (first multiplicand, addend, second multiplicand), quieted with 0x00400000, never negated; invalid
 -> 0x7FC00000. NJ=1 flushes denormal inputs and results to signed zero.
 
-**vmsum3fp128 / vmsum4fp128 are not IEEE.** We searched two families against all 48 results4 cases (24 each):
-- IEEE-style ordered sums (NaN, overflow and flush rules applied as below): 24 orders × product rounding
-  {exact, RN24, RZ24} × intermediate rounding {exact, RN, RZ at 24/25/26/32/48 bits} × final {RN, RZ} = 1,584
-  candidates. The best mismatches 3/48. These are the one-LSB-low results `-1.5 + -0.75 (+0) = 0xC00FFFFF` and
-  `Y + 2.5 + (-0) = Y - 1 ulp`, which no sign-symmetric sum can give.
-- Aligned-accumulator family: product {exact, RN24, RZ24} × accumulator width 20-199 bits × reference sign {p0,
-  largest product} × final {RN, RZ} × sign handling {signed sum, one's complement without end-around carry} ×
-  zero-product exponent {real, ignored}. Signed sum: best 3/48. Reference = largest product: best 2/48. Final RN: best
-  3/48. **0/48** for one's complement relative to sign(p0) + final truncation, for any product rounding and any
-  width from 25 to 88 bits below the largest product's MSB.
-
-The model implements that winner: the exact 48-bit products are truncated to the LSB of the largest exponent sum.
-Products with p0's sign add their magnitude, and the others add `~magnitude` (= -m-1). A negative total flips the sign
-and is complemented back. The result is truncated to 24 bits. Special rules, all from results4:
-- Any NaN gives 0x7FC00000; an SNaN payload is lost.
-- inf*0 and inf-inf give 0x7FC00000.
-- Exponent overflow gives a QNaN carrying the result's sign (0x7FC00000 or 0xFFC00000), never infinity (3 cases).
-- A result below 2^-126 becomes a signed zero even with NJ=0.
-- NJ=0 keeps denormal inputs (inf*denormal = inf).
-- vmsum3 ignores lane w.
-- VSCR is never changed.
+**vmsum3fp128 / vmsum4fp128 are not IEEE (hardware facts, results4 48/48 + semantic run 151/151).** A search over the
+reference sign, the accumulator width (24-33), the zero-product exponent and the zero/denormal packing found exactly one
+combination that matches all 199 cases:
+- **Accumulator.** LSB = 2^(emax-28), emax = the largest ea+eb (unbiased, denormal = -126) of the NONZERO products;
+  the exact 48-bit products are truncated to it. W=27 and W=29 fail (4-lane `x + (-x) + y + (-y)` = exactly
+  -2^(emax-28)).
+- **Reference sign = majority product sign** (sign(a)^sign(b), zero products included; a 2:2 tie in vmsum4 gives +).
+  Products of that sign add their magnitude, the others `~magnitude` (no end-around carry); a negative total flips the
+  sign and is complemented back. So each minority product - even a zero or one shifted out entirely - costs one LSB when
+  the total keeps the majority sign, and nothing when it flips (`-1.5 + -0.75 + (+0)` = 0xC00FFFFF; vmsum3
+  (+H, -H, -s) = +0 but vmsum4 (+H, -H, -s, +0) = -2^118). Rejected: first-product sign (151/151 hardware records
+  wrong), largest product (64 misses), max(S+, S-) (10), sign of the sum (21).
+- **Zeros.** A zero magnitude, and all-zero products, give +0 (92 cases).
+- **Packing.** Truncation to 24 bits; exponent overflow gives a QNaN with the result's sign (never infinity). A result
+  in [2^-127, 2^-126) keeps its fraction with exponent field 0 (leading 1 dropped - not the IEEE denormal), even with
+  NJ=1 (2 cases); anything smaller is a signed zero.
+- Unchanged: any NaN gives 0x7FC00000 (SNaN payload lost); inf*0 and inf-inf give 0x7FC00000; NJ=0 keeps denormal
+  inputs (inf*denormal = inf); vmsum3 ignores lane w; VSCR is never changed.
+- **Unverified:** the sign when every product is -0 (model +0); whether products are rounded before the truncation to
+  the accumulator LSB; a sum that overflows while each product is in range; more 2:2 ties with a nonzero negative
+  result; NJ=1 with a result in [2^-127, 2^-126) beyond one case.
 
 **vpermwi128.** `VD.i = VB[PERM >> (6-2i) & 3]`.
 
@@ -179,6 +175,8 @@ and is complemented back. The result is truncated to 24 bits. Special rules, all
 - Pack clamps the code to the format range and sets VSCR[SAT] when it clamps (10 cases show the 0->1 transition).
 - A NaN packs to the most negative code: 0x8000 or 0x200 (4 lanes). Unpack turns that code back into 0x7FC00000.
 - FLOAT16 is the Xenos half (saturates to 0x7FFF|sign, no inf or NaN) and never sets SAT.
+- FLOAT16_4 truncates like FLOAT16_2 (hardware fact, semantic run: 48 records over every pack size and z; 66 lanes where
+  xenia's round-to-nearest-even is one too high, 0 rounding up, odd-LSB ties truncate; no VSCR change).
 - Layouts, placements per (pack size, z), and the UIMM>>2 unpack type follow xenia. Every executed combination
   agrees with it.
 - Not modelled (`XTS_M_UNIMPLEMENTED`): pack size 0 and type 7 for both instructions.
@@ -186,13 +184,6 @@ and is complemented back. The result is truncated to 24 bits. Special rules, all
 ### Not covered by results4: targets for exec.vmx128
 - **FMA NaN order:** 0 lanes with two different NaNs for vmaddfp128 and vmaddcfp128, 2 for vnmsubfp128. Also open:
   NJ=1 with a denormal result that is not an exact zero, and vnmsubfp128 exact cancellation (-0).
-- **vmsum, accumulator:** the width is undecided between 25 and 88 bits below the largest product's MSB (the model
-  uses 47-48). Product pre-rounding is undecided. Target: sums where small products of p0's sign or the opposite sign
-  land 25-90 bits below the largest one.
-- **vmsum, signs and zeros:** the sign of an exactly zero sum and of all-zero products (the model gives -0 when an
-  opposite-signed product brings the total to -1), and `x + (-x)`.
-- **vmsum, specials:** a product that overflows while the sum is back in range; an infinity plus an overflowing finite
-  sum; and NJ=1 with denormal inputs (no case discriminates).
 - **vpermwi128:** 23 of 256 PERM values ran. Every (position, selector) pair was covered.
 - **vrlimi128:** IMM 2 and 4, and IMM bit 4 (values 16-31), never ran. The model ignores bit 4.
 - **vpkd3d128, (type, pack) pairs never run:**
@@ -205,8 +196,7 @@ and is complemented back. The result is truncated to 24 bits. Special rules, all
   - No NaN in an unsigned field (D3DCOLOR, the W of 2_10_10_10): the model packs 0, without SAT.
   - Whether a NaN sets SAT is undecided (every NaN case already saturated another lane).
   - Whether SAT counts unpacked lanes (NORMSHORT2/FLOAT16_2 z,w) is undecided.
-  - No FLOAT16 lane where truncation and round-to-nearest differ, and no half denormal (2^-24..2^-14). The model
-    truncates for FLOAT16_2 and uses RNE for FLOAT16_4, as xenia does.
+  - No half denormal input in 2^-24..2^-14 other than one lane (-5.8e-5 -> 0x8000, signed zero, as modelled).
 - **vupkd3d128:** only UIMM 0-7 ran (types 0 and 1). Never run:
   - UIMM 8-31 (types 2-7);
   - the 0x8000 NaN code;
@@ -220,12 +210,22 @@ arithmetic anywhere. **check-model: 82 mnemonics, 1,968 cases: 1,779 match, 0 mi
 them estimate ops (table below).
 
 Hardware facts (results4) the model applies:
-- **Single-precision operand range.** `fadds fsubs fmuls fmadds fmsubs fnmadds fnmsubs`: if no operand is a NaN, no
-  invalid operation occurs and no operand is infinite, a finite nonzero operand outside the normal single range
-  (double exponent < 897 or > 1150) gives `0x7FF8000000000000`, FR=FI=0, FPRF=QNaN and no exception bit (all such
-  cases, e.g. `1.0 + 2^-1022`, `2^-1022 * 0`). An infinite operand still wins (`inf * 2^-997 + x` = inf).
-  `fdivs`/`fsqrts` with such an operand compute in **double** precision (double rounding, denormals and overflow:
-  `0.1/DBL_MAX` = `0x0000666666666666` with UX).
+- **Single-precision operand range** (results4 + semantic run 2026-10-19). `fadds fsubs fmuls fdivs fsqrts fmadds
+  fmsubs fnmadds fnmsubs` accept operands of single-denormal magnitude (double exponent 874-896, 2^-149 <= |x| < 2^-126)
+  as ordinary values, including ones with low mantissa bits a single cannot hold (84 records; exponents 874, 886,
+  896): the operand is used at full double precision and the result rounded once to single - tininess, UX/XX/FI/FR,
+  denormal results with FPRF +-denormal, all four RN modes, round-then-negate for fnm*, disabled overflow setting FR as
+  for normal operands; fdivs/fsqrts with such operands round to single. Only if no operand is a NaN, no invalid operation
+  occurs and no operand is infinite, a finite nonzero operand with |x| < 2^-149 (exponent < 874) or |x| >= 2^128
+  (exponent > 1150) gives `0x7FF8000000000000`, FR=FI=0, FPRF=QNaN and no exception bit (`1.0 + 2^-1022`,
+  `2^-1022 * 0`); an infinite operand still wins (`inf * 2^-997 + x` = inf); `fdivs`/`fsqrts` with such an operand
+  compute in **double** precision (`0.1/DBL_MAX` = `0x0000666666666666` with UX). Boundary evidence: results4 needs the
+  QNaN at exponents <= 26 and 2001-2040, the run shows ordinary behaviour at 874 and 1150. **Unverified:** exponents
+  27-873 and 1151-2000, so the exact cut-offs (2^-149 / 2^128).
+- **Enabled underflow FPRF** (semantic run): a tiny result delivered exponent-adjusted (UE=1, +192 for single ops and
+  frsp) is classed normal in FPRF, even when the adjusted value is still below the single range (`frsp
+  0x0000000000000001` with UE=1: FPSCR `C80040F8` - UX, no XX as exact, FPRF +normal). UE=1 with an exact tiny result
+  still sets UX (8 frsp records, plus fadds/fmuls/fnmadds UE cases).
 - **Disabled overflow sets FR** (frsp/fdivs, RN=0 and RN=1; architecturally undefined).
 - **fmadd family: inf*0 sets VXIMZ even when the addend is a NaN** (SNaN addend: VXSNAN + VXIMZ, 1 case).
 - Single results keep the double NaN payload (`fadds 0.1, 0x7FF0000000000001` = `0x7FF8000000000001`).
@@ -253,7 +253,6 @@ Not decided by results4 (the model follows Book I / the PEM):
   exponent-adjusted result (+-1536 double, +-192 single and frsp), XX only if inexact; results4 never enables one.
 - frsp of a NaN clears the low 29 bits (Book I A.1); results4 only has `0x7FF8000000000000` inputs and the arithmetic
   single ops keep the payload, so Xenon may not truncate.
-- Single denormal operands (as doubles, exponents 874-896) count as outside the single range (no sample).
 - NJ=1 flush of denormal *results* (PEM; 0 discriminating lanes); `min(+0,-0)` = -0; vctuxs of (-1, 0) gives 0
   without SAT; FR for fcti*/fcfid = magnitude incremented.
 
@@ -271,3 +270,15 @@ All 443 modelled lanes match. The table results satisfy the architected bounds (
 224/224 vrefp/vrsqrtefp lanes within 2^-12, fres within 2^-8 (`fres(2.5)` is exactly at it) and frsqrte within 2^-5
 (29/29 non-overflow scalar results). Observed shape: fres keeps 8 significant bits (`fres(1.0)` = 255/256), frsqrte 9,
 vrefp/vrsqrtefp look piecewise linear (full-width significands). Exact tables need the OpenXenos ROADMAP `est` plan.
+
+Estimate hardware facts from the semantic run (2026-10-19, VSCR[NJ]=0; host/tests/t_hw_sem_est.c replays all 28 records):
+- **vexptefp / vexptefp128 flush every denormal result to +0 even with NJ=0:** x <= -127, integral or not, gives
+  exactly +0 (24 records, inputs -127 .. -152 and non-integral ones); 2^-126 and 2^-125 are exact. The checker treats
+  x <= -127 as exact +0 whatever NJ is.
+- **fres with FPSCR[OE]=1** (MSR[FE0/FE1]=0, so no interrupt): when |x| < 2^-129 the reciprocal overflows the single
+  range and the CPU returns the 8-bit table value x 2^-192 with x's sign - the enabled-overflow exponent adjust - not
+  +-inf or max (4 records, |x| from 2^-1074 to 2^-238, FPSCR 0x40 and 0xF8). The checker validates the 2^-8 bound on
+  (x * 2^192, cpu).
+- **Unverified:** the vexptefp flush with NJ=1 (assumed) and for x in (-127, -126); the fres boundary (exponents -129
+  and -128: the checker accepts either form); a symmetric +192 for UE-enabled underflow (not applied); the FPSCR flags
+  under the OE rule (not in the records); the same denormal flush for vrefp, vlogefp and the other estimate ops.

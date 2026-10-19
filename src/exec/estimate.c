@@ -39,6 +39,36 @@ static uint64_t w2d(uint32_t w)
   return s | ((uint64_t)(e - 127 + 1023) << 52) | (f << 29);
 }
 
+/* fres with FPSCR[OE] set and a reciprocal beyond the single range: Xenon does not deliver +-inf / max but the
+ * exponent-adjusted result of the enabled-overflow rule, estimate * 2^-192 (console run, Jasper, FPSCR 0x40 and 0xF8,
+ * MSR[FE0/FE1]=0 so no interrupt: |x| from 2^-1074 to 2^-238, both signs, all four results are the 8-bit table value
+ * times 2^-192 with the sign of x). cpu = est(x) * 2^-192 = est(x * 2^192) holds the architected bound on the pair
+ * (x * 2^192, cpu); x * 2^192 is always a normal double here (|x| < 2^-129). Returns 0 when cpu cannot be such a result
+ * (zero, denormal, inf, NaN), else 1 and the pair's x in *xs. */
+static int fres_oe_pair(uint64_t x, uint64_t cpu, uint64_t *xs)
+{
+  const int ce = (int)((cpu >> 52) & 0x7FF);
+  if (ce == 0 || ce == 0x7FF) return 0;
+  uint64_t f = x & 0xFFFFFFFFFFFFFull;
+  int xe = (int)((x >> 52) & 0x7FF);
+  if (!xe) {                                     /* denormal: normalise */
+    int sh = __builtin_clzll(f) - 11;
+    f = (f << sh) & 0xFFFFFFFFFFFFFull;
+    xe = 1 - sh;
+  }
+  *xs = (x & (1ull << 63)) | ((uint64_t)(xe + 192) << 52) | f;
+  return 1;
+}
+
+/* unbiased exponent of the leading bit of a finite nonzero double (denormals included) */
+static int d_lead_exp(uint64_t x)
+{
+  int e = (int)((x >> 52) & 0x7FF);
+  if (e) return e - 1023;
+  uint64_t f = x & 0xFFFFFFFFFFFFFull;
+  return (63 - __builtin_clzll(f)) - 1074;
+}
+
 static int op_reg(const xts_insn_t *d, uint32_t word, const char *a, const char *b)
 {
   int i = xts_op_index(d, a);
@@ -89,7 +119,7 @@ int xts_estimate_verdict(int insn, uint32_t word, const xts_state_t *in, const x
   int nl = vector ? 4 : 1;
   for (int i = 0; i < nl; i++) {
     uint64_t x, cpu, exact = 0;
-    int verdict = 0, ok = -1;                 /* verdict 0 unknown, 1 bound, 2 exact */
+    int verdict = 0, ok = -1, adj = 0;        /* verdict 0 unknown, 1 bound, 2 exact; adj: exponent adjust applied */
     if (vector) {
       x = in->vr[rb & 127].w[i];
       cpu = out->vr[rt & 127].w[i];
@@ -112,6 +142,20 @@ int xts_estimate_verdict(int insn, uint32_t word, const xts_state_t *in, const x
       x = in->fpr[rb & 31];
       cpu = out->fpr[rt & 31];
       int r = xf_estimate_ok(kind, 0, x, cpu);
+      const int finite = ((x >> 52) & 0x7FF) != 0x7FF && (x << 1) != 0;
+      if (kind == 0 && finite && (in->fpscr & XTS_FPSCR_OE)) {
+        /* enabled overflow: for |x| < 2^-129 the reciprocal is beyond the single range for certain and the result is the
+         * estimate scaled by 2^-192; |x| in [2^-129, 2^-127) may or may not overflow, so either form is accepted. */
+        int e = d_lead_exp(x);
+        uint64_t xs;
+        if (e <= -130) {
+          r = fres_oe_pair(x, cpu, &xs) ? xf_estimate_ok(kind, 0, xs, cpu) : 0;
+          if (r < 0) r = 0;
+          adj = -192;
+        } else if (e < -127 && r != 1 && fres_oe_pair(x, cpu, &xs)) {
+          if (xf_estimate_ok(kind, 0, xs, cpu) == 1) { r = 1; adj = -192; }
+        }
+      }
       if (r >= 0) { verdict = 1; ok = r; }
     }
     if (verdict) checked++;
@@ -122,6 +166,7 @@ int xts_estimate_verdict(int insn, uint32_t word, const xts_state_t *in, const x
       xj_kv_hex(j, "cpu", cpu, vector ? 8 : 16);
       xj_kv_str(j, "verdict", verdict == 2 ? "exact" : verdict == 1 ? "bound" : "unknown");
       if (verdict == 2) xj_kv_hex(j, "exact", exact, 8);
+      if (adj) xj_kv_int(j, "exp_adjust", adj);
       xj_key(j, "ok");
       if (ok < 0) xj_null(j);
       else xj_bool(j, ok);
