@@ -98,8 +98,10 @@ XTS_MODEL("vnmsubfp128", m_vnmsubfp128);
  *   2. Any NaN input -> 0x7FC00000 (default NaN, an SNaN payload is not kept). inf*0 or inf-inf -> 0x7FC00000;
  *      otherwise an infinite product gives that infinity.
  *   3. Exact 48-bit products. The accumulator LSB is 2^(emax - 28), emax = the largest exponent sum ea+eb of the
- *      NONZERO products (a zero product's exponent is ignored); every product is truncated to that LSB. Products
- *      shifted out completely still take part in step 4 with magnitude 0. All products zero -> +0.
+ *      NONZERO products (a zero product's exponent is ignored; a denormal input counts with its normalized exponent,
+ *      below -126: semantic re-run, a denormal x 7F7FC99E product kept all 24 bits); every product is truncated to
+ *      that LSB. Products shifted out completely still take part in step 4 with magnitude 0. All products zero ->
+ *      -0 if every product is -0 (8 cases of the re-run), else +0.
  *   4. One's-complement accumulation without the end-around carry, relative to a reference sign R that is the
  *      MAJORITY sign of the products (each product's sign is sign(a) ^ sign(b), zero products included); a tie
  *      (2 against 2 in vmsum4) gives R = +. Products of sign R add their magnitude, the others add ~magnitude
@@ -134,15 +136,19 @@ static uint32_t vmsum(const xts_vr_t *va, const xts_vr_t *vb, int n, int nj)
   uint64_t pm[4] = { 0 };
   int pe[4] = { 0 }, ps[4] = { 0 }, emax = -100000, nneg = 0;
   for (int i = 0; i < n; i++) {
-    uint32_t ea = (a[i] >> 23) & 0xFF, eb = (b[i] >> 23) & 0xFF;
+    int ea = (int)((a[i] >> 23) & 0xFF), eb = (int)((b[i] >> 23) & 0xFF);
     uint64_t ma = (a[i] & F_FRAC) | (ea ? 0x800000u : 0), mb = (b[i] & F_FRAC) | (eb ? 0x800000u : 0);
+    if (!ea) ea = 1;                              /* a denormal (NJ=0) counts with its NORMALIZED exponent */
+    if (!eb) eb = 1;
+    while (ma && !(ma & 0x800000u)) { ma <<= 1; ea--; }
+    while (mb && !(mb & 0x800000u)) { mb <<= 1; eb--; }
     pm[i] = ma * mb;
-    pe[i] = (int)(ea ? ea : 1) + (int)(eb ? eb : 1) - 254 - 46;
+    pe[i] = ea + eb - 254 - 46;
     ps[i] = (int)((a[i] ^ b[i]) >> 31);
     nneg += ps[i];
     if (pm[i] && pe[i] > emax) emax = pe[i];
   }
-  if (emax == -100000) return 0;                  /* all products zero */
+  if (emax == -100000) return nneg == n ? F_SIGN : 0;   /* all products zero: -0 only if every one is -0 */
   int ref = 2 * nneg > n;                         /* majority sign, tie -> + */
   int lsb = emax + 46 - VMSUM_ACC_BITS;           /* weight of the accumulator LSB; products are >= 2^(emax+46) */
   int64_t acc = 0;

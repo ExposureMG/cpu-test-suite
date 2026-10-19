@@ -148,7 +148,9 @@ NaN: first NaN of (first multiplicand, addend, second multiplicand), quieted wit
 **vmsum3fp128 / vmsum4fp128 are not IEEE (hardware facts, results4 48/48 + semantic run 151/151).** A search over the
 reference sign, the accumulator width (24-33), the zero-product exponent and the zero/denormal packing found exactly one
 combination that matches all 199 cases:
-- **Accumulator.** LSB = 2^(emax-28), emax = the largest ea+eb (unbiased, denormal = -126) of the NONZERO products;
+- **Accumulator.** LSB = 2^(emax-28), emax = the largest ea+eb of the NONZERO products, with a denormal input (NJ=0)
+  counted at its NORMALIZED exponent (below -126: semantic re-run, -2^-149 x 0x7F7FC99E kept all 24 product bits,
+  B4FFC99E; with -126 the model truncated it to B4FC0000);
   the exact 48-bit products are truncated to it. W=27 and W=29 fail (4-lane `x + (-x) + y + (-y)` = exactly
   -2^(emax-28)).
 - **Reference sign = majority product sign** (sign(a)^sign(b), zero products included; a 2:2 tie in vmsum4 gives +).
@@ -157,13 +159,14 @@ combination that matches all 199 cases:
   the total keeps the majority sign, and nothing when it flips (`-1.5 + -0.75 + (+0)` = 0xC00FFFFF; vmsum3
   (+H, -H, -s) = +0 but vmsum4 (+H, -H, -s, +0) = -2^118). Rejected: first-product sign (151/151 hardware records
   wrong), largest product (64 misses), max(S+, S-) (10), sign of the sum (21).
-- **Zeros.** A zero magnitude, and all-zero products, give +0 (92 cases).
+- **Zeros.** A zero magnitude gives +0 (70 cases). All-zero products give -0 if every product is -0 (8 cases of the
+  re-run, NJ=0 and NJ=1, vmsum3 and vmsum4), else +0 (22 cases) - the IEEE rule for a sum of zeros.
 - **Packing.** Truncation to 24 bits; exponent overflow gives a QNaN with the result's sign (never infinity). A result
   in [2^-127, 2^-126) keeps its fraction with exponent field 0 (leading 1 dropped - not the IEEE denormal), even with
   NJ=1 (2 cases); anything smaller is a signed zero.
 - Unchanged: any NaN gives 0x7FC00000 (SNaN payload lost); inf*0 and inf-inf give 0x7FC00000; NJ=0 keeps denormal
   inputs (inf*denormal = inf); vmsum3 ignores lane w; VSCR is never changed.
-- **Unverified:** the sign when every product is -0 (model +0); whether products are rounded before the truncation to
+- **Unverified:** whether products are rounded before the truncation to
   the accumulator LSB; a sum that overflows while each product is in range; more 2:2 ties with a nonzero negative
   result; NJ=1 with a result in [2^-127, 2^-126) beyond one case.
 

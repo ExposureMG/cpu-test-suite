@@ -4,6 +4,9 @@
  * the old VD; aliased operands appear once) and the VD the console produced. VSCR is unchanged on hardware in every
  * record (no record had a VSCR difference against a model that leaves VSCR alone for these cases).
  *
+ * Plus the 9 vmsum records the semantic re-run (build f4beeb8) failed: all-negative-zero products sum to -0, and a
+ * denormal input counts with its normalized exponent ("(re-run)" ids).
+ *
  * Behaviours covered (src/model/vmx128.c has the rules):
  *   vmsum: accumulator LSB 2^(emax-28); one's complement relative to the MAJORITY product sign (tie -> +), so x+(-x)
  *          with two more cancelling lanes is -1 LSB and the minority sign costs one LSB per product; zero products
@@ -188,6 +191,15 @@ static const hw_rec_t RECS[] = {
   { "vpkd3d128#149", 0x1AF6561E, 0x00000000, 2, { { 74, { 0x405C9C71, 0x4040009D, 0xBF800000, 0x3F000000 } }, { 119, { 0x40400000, 0x7F800000, 0x3F000000, 0xFF800000 } } }, { 0x40400000, 0x7F800000, 0x42E44200, 0xBC003800 } },
   { "vpkd3d128#173", 0x1B354651, 0x00000000, 2, { { 25, { 0x40400000, 0x7FC00000, 0xCF000000, 0x807FFFFF } }, { 40, { 0xB31188F6, 0x3F000000, 0xC15C5800, 0xC2368800 } } }, { 0x40400000, 0x7FC00000, 0xCAE2D1B4, 0x807FFFFF } },
   { "vpkd3d128#189", 0x18572E56, 0x00000000, 2, { { 34, { 0x00400000, 0x00000001, 0xCF000000, 0x40400000 } }, { 69, { 0xBE6EF800, 0xC0233FFF, 0x404062F5, 0x3B0E37FF } } }, { 0x00400000, 0xB377C119, 0x42031871, 0x40400000 } },
+  { "vmsum3fp128.t#38 (re-run)", 0x16E78D91, 0x00000000, 3, { { 23, { 0x2D71E3AA, 0x878C7B38, 0x3BC4130D, 0x2C5E6AB8 } }, { 71, { 0x00000000, 0x00000000, 0x80000000, 0x80000000 } }, { 49, { 0xC125E951, 0xC0A2C1CA, 0x3FA81817, 0x3CD07FDE } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
+  { "vmsum3fp128.t#116 (re-run)", 0x1799D198, 0x00000000, 3, { { 92, { 0x7F800001, 0x477FE000, 0x80000001, 0x477FE000 } }, { 25, { 0x00000000, 0x00000000, 0x00000000, 0x00800000 } }, { 26, { 0xBD380C8A, 0xC1AA4FEC, 0xBC3A0797, 0xBF1965B2 } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
+  { "vmsum4fp128#6 (re-run)", 0x1400F9F4, 0x00000000, 3, { { 32, { 0x80000001, 0x80000001, 0x80000001, 0x80000001 } }, { 32, { 0x80000001, 0x80000001, 0x80000001, 0x80000001 } }, { 31, { 0x477FE000, 0x7F7FC99E, 0x00000001, 0x3FC00000 } } }, { 0xB4FFC99E, 0xB4FFC99E, 0xB4FFC99E, 0xB4FFC99E } },
+  { "vmsum4fp128.t#50 (re-run)", 0x17B051D0, 0x00000000, 3, { { 29, { 0x4F000000, 0x4F000000, 0x00800000, 0x7FC00000 } }, { 16, { 0x80000000, 0x00000000, 0x80000000, 0x00000000 } }, { 10, { 0x3F6BA839, 0xC3136A01, 0x3D3F0F9F, 0xBDDAF671 } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
+  { "vmsum3fp128.t#38 (re-run)", 0x1792A99E, 0x00010000, 3, { { 124, { 0x4F000000, 0xFF800001, 0x42C80000, 0x3DCCCCCD } }, { 18, { 0x00000000, 0x00000000, 0x00000000, 0x00000000 } }, { 85, { 0xC321A189, 0xBD546FEC, 0xC2CBD09A, 0xC28E4C84 } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
+  { "vmsum3fp128.t#86 (re-run)", 0x179A1194, 0x00010000, 3, { { 60, { 0x807FFFFF, 0xFFC00001, 0x80000000, 0xFF800001 } }, { 26, { 0x00000000, 0x80000000, 0x00000000, 0x00000000 } }, { 2, { 0xC191087A, 0x4093C372, 0xBC3D1C4E, 0x41058A9F } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
+  { "vmsum3fp128.t#110 (re-run)", 0x178A3D93, 0x00010000, 3, { { 28, { 0x7FC00000, 0x00000000, 0x7F800001, 0xC0200000 } }, { 74, { 0x00000000, 0x00000000, 0x00000000, 0x00000000 } }, { 103, { 0xBF075F52, 0xBC4CC653, 0xBFE6C4D0, 0x41BEA992 } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
+  { "vmsum3fp128.t#116 (re-run)", 0x16FF2999, 0x00010001, 3, { { 87, { 0x3DCCCCCD, 0x40400000, 0x00800000, 0x4B000000 } }, { 31, { 0x80000000, 0x00000000, 0x00000000, 0x00800000 } }, { 37, { 0x41AA960B, 0xC0135DF2, 0xBEE9070C, 0xBC81834C } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
+  { "vmsum4fp128#15 (re-run)", 0x160EE1D1, 0x00010001, 3, { { 16, { 0x2234C250, 0x13F49481, 0x9B79210A, 0xD4ADDC2D } }, { 14, { 0xE9507222, 0x995D0510, 0xBE1FB6E1, 0x8FB465E9 } }, { 60, { 0x007FFFFF, 0x007FFFFF, 0x007FFFFF, 0x007FFFFF } } }, { 0x80000000, 0x80000000, 0x80000000, 0x80000000 } },
   { "vpkd3d128#213", 0x1A560693, 0x00000000, 2, { { 18, { 0x3DCCCCCD, 0xCF000000, 0x3F000000, 0xFFC00001 } }, { 96, { 0x4B800000, 0xC64A9FFF, 0x45E82800, 0x403FFD6A } } }, { 0x7FFFF254, 0x6F4141FF, 0x3F000000, 0xFFC00001 } },
   { "vpkd3d128#221", 0x19B76E95, 0x00000001, 1, { { 45, { 0xBD5C5800, 0x4046211E, 0x7F800001, 0x40400085 } } }, { 0xAAE24231, 0x7FFF4200, 0x7F800001, 0x40400085 } },
   { "vpkd3d128#237", 0x19D566D9, 0x00000000, 2, { { 44, { 0x407BC695, 0x44290B63, 0x403FFF1E, 0xB87436A8 } }, { 78, { 0x4F000000, 0x4F800000, 0x80000000, 0x477FE000 } } }, { 0x41FF8000, 0x4F800000, 0x80000000, 0x477FE000 } },
@@ -257,6 +269,6 @@ static void replay_all(const char *mnem, int want)
   HT_EQ_U64(ok, n);
 }
 
-HTEST(hw_sem_vmsum3fp128) { replay_all("vmsum3fp128", 68); }
-HTEST(hw_sem_vmsum4fp128) { replay_all("vmsum4fp128", 83); }
+HTEST(hw_sem_vmsum3fp128) { replay_all("vmsum3fp128", 74); }
+HTEST(hw_sem_vmsum4fp128) { replay_all("vmsum4fp128", 86); }
 HTEST(hw_sem_vpkd3d128) { replay_all("vpkd3d128", 48); }
