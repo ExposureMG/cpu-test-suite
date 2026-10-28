@@ -1,3 +1,7 @@
+Entirely made with AI. Do not expect a clean repo or codebase.
+
+This is simply a testing suite for my ISA research.
+
 # XTS - Xenon CPU test suite
 
 A self-contained libxenon program for the Xbox 360 CPU (Xenon / Waternoose and successors). One ELF per profile is
@@ -61,12 +65,21 @@ IPv4 address is read at build time from the default-route interface and compiled
 | `NET_DEST=auto` | unicast to this PC |
 | `NET_DEST=<ip> NET_DEST_MAC=<mac>` | unicast to another receiver |
 | `NET_FPS=<n>` | frame copies per second (default 2000 broadcast, 1000 unicast) |
-| `NET_COPIES=<n>` | copies of each frame (default 2) |
+| `NET_COPIES=<n>` | copies of each frame (default 2; 3 recommended on Wi-Fi) |
+| `NET_WAKE_MS` / `NET_WAKE_MAX_MS` / `NET_WAKE_IDLE_MS` / `NET_WAKE_FPS` | after `NET_WAKE_IDLE_MS` (50) of silence, send at `NET_WAKE_FPS` (200 copies/s) for as long as the silence lasted, between 150 and 500 ms, so a dozing Wi-Fi receiver wakes first; `NET_WAKE_MS=0` turns it off |
 | `NET_DRIVER=own` | XTS's own raw TX-only driver instead of libxenon's stack (not seen to deliver frames on the bring-up network) |
 | `NET_SETTLE_S=<n>` | `NET_DRIVER=own` / no-DHCP only: seconds to wait after link-up before sending (default 10) |
 
 The startup screen shows which destination the ELF was built for. Sending happens only between measurements, so none
 of these options affect the results.
+
+**Turn Wi-Fi power saving off on the receiving PC** for the length of a run (`iw dev` names the interface):
+```sh
+sudo iw dev wlan0 set power_save off      # until the next reboot / reconnect; check with: iw dev wlan0 get power_save
+```
+With power saving on, the PC's Wi-Fi dozes during measurement pauses and its access point drops the frames that arrive
+meanwhile: runs lost bursts of 5-50 frames (all copies). With it off, sched and semantic runs arrive with 0 gaps. The
+wake window above is only a fallback. A cable (or PC and console on the same switch) removes the remaining rare loss.
 
 ## Output
 `tools/xts_recv.py` (Python 3 standard library only) listens on UDP port 36360 on every interface, de-duplicates the
@@ -114,11 +127,31 @@ too), the last breadcrumb in `receive.json` names the case that was about to run
 | `mem` | `mem.hier`, `ldst.lat` (+ `cache`, `data_align`) |
 | `smt` | `lat.*`, `tput.*`, `issue.*`, `unit.*`, `ucode` under each `sibling` value; `lat.*`/`tput.*` x `thread_prio`; `lat.*`, `mem.*`, `ldst.*` x `other_cores` |
 | `full` | all of the above, in that order |
+| `frontend` | `frontend.loop`: cost of a loop iteration for bodies of 1-160 words at every loop-top offset of a 128-byte line, and the old-vs-line-layout method check (the data behind the timing layout below) |
+| `loaduse` | `ldst.*` at the default condition: the direct load-to-use chains `luse.*` (load, 14 dependent ops, `isync`, against the same chain from an independent register) next to the CR-detour `lat.*` values for FPR/VR loads |
+| `tlb_bisect` | `probe.tlb`: mem.hier's page-spread chase at 1600-2048 pages, ascending, breadcrumb before every case (found the 2040-page lockup; the cases from 2040 up are quarantined) |
 
 Rows with `.sweep = 1` vary one axis at a time and skip families that are not sensitive to it, on top of a
 default-condition pass, so a full run stays tractable. Families and axes added later join automatically through the
-globs. Agent estimates (unverified): `timing` about 7 minutes, `sched` a few minutes per condition vector; `full` is
-dominated by the SMT sweeps.
+globs. Measured on a Jasper (2026-10-19): `semantic` 6.6 min, `timing` 6 min, `sched` 2.4 min, `mem` 0.5 min,
+`smt` 95 min.
+
+## Timing method
+Every timing family runs a framed loop (`mtctr; isync; mftb; top: body x depth; bdnz top; mftb`) at six depths and fits
+ticks per iteration against depth; the slope is the cost per unit. Hardware showed that the per-iteration loop cost
+depends on where the loop top and the closing branch sit in their 16-byte fetch group (`frontend.loop`): with the top at
+byte 0 and 8-word depth steps it jumps by 4-11 cycles from depth to depth. Unit-repeating families therefore use
+`xts_time_line_layout()` (`include/xts/timing.h`): loop top at byte 12 of a fetch group, six depths of whole 128-byte
+lines, iterations scaled to keep the run length. Measured: `li` 1.020 and `add` 2.018 cycles per unit with fit
+residuals <= 0.06 % (the old layout: 8.9 %); the layout carries a constant fetch bias of about +0.02 cycles per word.
+Families whose depth means something else (link stack, chase length, buffer coverage) keep their own depths.
+
+Each series starts with an unrecorded warm-up run; A/B/A compares the minimum of three re-runs of the first depth with
+the minimum of its repeats. A fit is `pass` (spread and A/B/A < 2 %, residual < 1 %), `nonlinear` (repeatable - the
+residual is at least 5x the per-depth spread - but not a straight line: the value is the least-squares average and
+`fit.marginal_cycles` has the cost of each depth step) or `noisy`. Families that combine several fits accept `pass`
+and `nonlinear` parts (`xts_status_measured`). Under a load condition (sibling, other cores, thread priority, speed)
+no baseline comparison is made.
 
 ## Test families
 | Family | Kind | What it produces |
@@ -166,6 +199,7 @@ There is deliberately no `fpscr_ni` axis: FPSCR[NI] cannot be set on Xenon.
 | Option | Effect |
 |---|---|
 | `PROFILE=<p>` | which profile is linked (one ELF per profile) |
+| `SEED=<n>` | base seed of the profile rows (default 1): repeated runs with different seeds draw different random cases; case ids stay the same, so runs merge per case (recorded as `seed` in HELLO and `receive.json`) |
 | `BUILD=<dir>` | isolated output directory |
 | `CFLAGS_EXTRA=-DXTS_CRUMB_EVERY_TIMING=<n>` | breadcrumb cadence of timing/sched/mem/smt/calib families (default 16; 0 = block start only) |
 
@@ -189,10 +223,28 @@ power-cycle in between.
    and `crash.json` with `"kind": "crash"`, `"vector": "0700"`, the registers, the case and the last 50 log lines. The
    receiver suggests the line `self.crash crash` for quarantine.txt - do not add that one (the profile exists to
    crash).
-5. `semantic`: every `fail` is either a model bug or a new hardware fact. Divide by zero, 32-bit-mode carry/overflow,
-   lmw/string ops and the d3d/vmsum gaps are model guesses waiting for this run; `failures.jsonl` has the state diffs.
-6. `timing`: check the anchors (dependent add 2, fadd 10, vaddfp 12) and the `calib` cycles-per-tick record.
-7. `sched`, `mem`, then `smt` (the sibling/park/other-core code has never run on hardware; watch for `lost` threads).
+5. `semantic`: every `fail` is either a model bug or a new hardware fact (`failures.jsonl` has the state diffs). Since
+   cd28f39 the Jasper run has **0 failures** (67,907 pass, 12,052 info, 346 skip).
+6. `timing`: check the anchors (dependent add 2, calib cycles per tick 64 at 49.875 MHz).
+7. `sched`, `mem`, then `smt`. All of them have run on hardware; the TLB sweep stops at 2032 pages (see below).
+
+## Hardware findings (Jasper, PVR 0x00710500, 2026-10-19)
+The full table for implementers (scheduling model, compiler, emulator) is `docs/FINDINGS.md`; instruction semantics
+that differ from the architecture are in `src/model/KNOWN.md`. Headline facts:
+- **Semantics:** FPSCR[NI] and reserved bit 20 cannot be set; `lswx` with a byte count of 0 behaves as 1; vmsum3/4fp128
+  are a 28-bit one's-complement accumulation relative to the majority product sign; vpkd3d128 FLOAT16_4 truncates;
+  single-precision ops treat single-denormal-sized operands as ordinary; vexptefp flushes denormal results to +0.
+- **Coherency:** a line that `xdcbt` fetches into a core's L1 is not invalidated by another core's stores or dcbf
+  (999 of 1,000 rounds stale); XTS drops the test core's copies before every case.
+- **Timing:** dependent integer add 2 cycles; L1 load-to-use 5, L2 ~45, memory ~640 cycles; L1 32 KB 4-way, L2 1 MB
+  8-way, 128-byte lines; load-hit-store ~37.5; mispredict ~25.6-25.8 (whole-line layout); register branch after
+  mtctr/mtlr ~22.7 / ~18.7; link stack 4 entries; 105-110 microcoded instructions (algebraic loads, variable shifts,
+  mfcr/mtcrf, div, record forms); string ops 14 + 1 per register (lswx/stswx +23; stmw departs from it at 18 registers,
+  49 cycles). FP/VR load-to-use (~33) is an upper bound from the current method, not yet a direct chain.
+- **SMT:** a busy sibling thread halves throughput (~1.9x); FP/VMX dependent latency is unchanged, the integer add chain
+  rises ~1.2x; low thread priority costs ~32x throughput; load on the other cores does not touch core-local kernels.
+- **Platform limit:** more than ~2040 live 64 KB pages livelock libxenon's software TLB refill (`mem.hier` stops at
+  2032 pages; `tlb.2048` once froze the whole console).
 
 ## Robustness
 - **No storage on the console.** No file is opened, written or mounted; libfat and libxenon's USB stack are not even
@@ -203,9 +255,13 @@ power-cycle in between.
   records). Frames are numbered, CRC-checked, sent twice and paced; only the transmitter core touches the NIC, it never
   starts a frame while the test core measures. It uses libxenon's DHCP + lwIP UDP; lwIP's receive processing (ARP, DHCP
   lease) runs only on that core and only between measurements, though the NIC may store incoming frames meanwhile.
-- **Breadcrumbs:** before every case of self/semantic families (every 16th case of the timing-like families) the suite
-  sends a CRUMB message and waits until it is on the wire before the case runs, so the PC always knows the case in
+- **Breadcrumbs:** before every case of self/semantic/probe families (every 16th case of the timing-like families) the
+  suite sends a CRUMB message and waits until it is on the wire before the case runs, so the PC always knows the case in
   flight.
+- **Suite watchdog:** the suite beats about once a millisecond while it waits on the test core; between HELLO and END
+  the transmitter sends a HANG report for the suite core (pir 2) after 10 s without a beat, and a CRASH report when the
+  suite core's crash slot fills. Only a whole-console lockup (nothing runs) stays unreported - the breadcrumb then
+  names the case.
 - **Crash or hang of the test core:** the crash handler fills the test core's crash slot; a case that does not
   finish within its timeout (2 s self/semantic, 10 s timing/sched/calib, 60 s mem/smt) counts as a hang. The suite
   then sends a crash/hang record for the exact case, the CRASH/HANG report (registers, DAR/DSISR, the case and its input
@@ -232,7 +288,13 @@ make check                         # check_draws (RNG draw order, libclang), che
 python3 tools/xts_recv.py --selftest
 python3 tools/xts_merge.py <run dirs...> -o merged/        # merge runs from one or more consoles
 python3 tools/xts_schedmodel.py merged/merged.jsonl -o model/ --td   # scheduling model (JSON/CSV + LLVM .td sketch)
+python3 tools/xts_schedmodel.py <run dirs...> -o model/      # straight from receiver run directories too
+python3 tools/update_baselines.py <run dirs...> [--apply]   # refresh stale timing baselines in isa/xenon_isa.json
 ```
+`xts_schedmodel.py` accepts `pass`, `nonlinear`, `regressed` and `info`, plus `noisy` measurements that at least two
+runs reproduce within `--repeat-tol` (2 %; tagged `repeatable_noisy`). From the seven newest Jasper runs it has issue
+costs for 430 of 436 user instructions (the rest: `sc`, `eciwx`, `ecowx`, `bclr`/`bcctr` - given as branch penalties -
+and `lfdx`, whose runs disagree by 4.6 %).
 Host transport knobs (environment of a host dry run): `XTS_NET_HOST=<ip>:<port>` (default `127.0.0.1:36360`, `off`),
 `XTS_NET_COPIES`, `XTS_NET_FPS`, `XTS_NET_DROP=<rate>,<seed>` (+ `XTS_NET_DROP_LOG=<file>`), `XTS_NET_CORRUPT`,
 `XTS_NET_REORDER=<window>,<seed>` (`src/plat/net_host.c`).
@@ -257,10 +319,12 @@ src/conds/        condition axes, one file each
 src/smt/          sibling-thread / other-core control
 profiles/         one file per profile
 quarantine.txt    cases skipped by every build (compiled in)
-tools/            xts_recv.py (receiver), gen_isa.py, gen_slot.py, gen_quarantine.py, check_*.py, xts_merge.py,
-                  xts_schedmodel.py, xts.lds, bootstrap.sh, install_elf.sh
+tools/            xts_recv.py (receiver), xts_tftp.py (TFTP boot server), gen_isa.py, gen_slot.py, gen_quarantine.py,
+                  check_*.py (check_draws: RNG draw order), xts_merge.py, xts_schedmodel.py, update_baselines.py,
+                  findings_table.py, xts.lds, bootstrap.sh, install_elf.sh
 host/             host-only programs (enc CLI, model replay, dry run, unit tests)
-docs/             PROTOCOL.md (wire format)
+docs/             PROTOCOL.md (wire format), FINDINGS.md (hardware findings table for implementers),
+                  findings_instructions.csv (per-instruction table from tools/findings_table.py)
 isa/              vendored xenon_isa.json + SOURCE
 third_party/      SoftFloat 3e with a PowerPC specialization (XTS-PowerPC.md)
 ```
