@@ -1,0 +1,437 @@
+mnem,isa,unit,latency,rthroughput,issue_cost,issue_cost_source,ucode_microcoded,pipe_group,load_use_latency_l1,notes
+tdi,ppc,branch,,,1.02,ucode,no,br_t,,pipe_group inferred (class not measured directly)
+twi,ppc,branch,,,1.02,ucode,no,br_t,,pipe_group inferred (class not measured directly)
+vaddubm,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmaxub,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrlb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpequb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vaddfp,altivec,vector,VA:12.00;VB:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.37x (57.69); pipe_group inferred (class not measured directly)"
+vmrghb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vpkuhum,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsldoi128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsel,altivec,vector,VA:4.00;VB:4.00;VC:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vperm,altivec,vector,VA:4.00;VB:4.00;VC:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsldoi,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmaddfp,altivec,vector,VA:12.00;VC:12.00;VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.45x (57.70); pipe_group inferred (class not measured directly)"
+vnmsubfp,altivec,vector,VA:12.00;VC:12.00;VB:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.44x (57.70); pipe_group inferred (class not measured directly)"
+vadduhm,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmaxuh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrlh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpequh,altivec,vector,VA:4.00;VB:4.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vsubfp,altivec,vector,VA:12.00;VB:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.41x (57.71); pipe_group inferred (class not measured directly)"
+vmrghh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkuwum,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vadduwm,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler)
+vmaxuw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+lvewx128,vmx128,memory,,,11.48,ucode,no,lvx,35.75,"load-use l2 91.99 (single run), cold 673.27 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.94; pipe_group inferred (class not measured directly)"
+vrlw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpequw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vmrghw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vpkuhus,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+lvx128,vmx128,memory,,,11.48,ucode,no,lvx,32.91,load-use l2 99.30 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93
+vcmpeqfp,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 32.00 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vpkuwus,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmaxsb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vslb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrefp,altivec,vector,VB:14.00,2.00,2.00,ucode,no,fp_vfp_n6,,data-dependent: indep/denormal.nj0 33.29x (66.67); pipe_group inferred (class not measured directly)
+vmrglb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkshus,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vmaxsh,altivec,vector,VA:4.00;VB:4.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vslh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrsqrtefp,altivec,vector,VB:14.00,2.00,2.00,ucode,undetermined,fp_vfp_n6,,data-dependent: indep/denormal.nj0 33.27x (66.69); pipe_group inferred (class not measured directly)
+vmrglh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkswus,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vaddcuw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmaxsw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+stvewx128,vmx128,memory,,,2.93,ucode,no,stfd_stvx,,pipe_group inferred (class not measured directly)
+vslw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vexptefp,altivec,vector,VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal.nj0 57.40x (57.70); pipe_group inferred (class not measured directly)
+vmrglw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkshss,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+stvx128,vmx128,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; store rthroughput 3.51
+vsl,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgefp,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 31.99 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vlogefp,altivec,vector,VB:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal.nj0 57.45x (57.70); pipe_group inferred (class not measured directly)
+vpkswss,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vaddubs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vminub,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsrb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgtub,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vrfin,altivec,vector,VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vspltb,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupkhsb,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vadduhs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vminuh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsrh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgtuh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,.rc: lat 31.97 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vrfiz,altivec,vector,VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsplth,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupkhsh,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vadduws,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vminuw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsrw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgtuw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 32.00 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vrfip,altivec,vector,VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vspltw,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupklsb,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+lvxl128,vmx128,memory,,,11.50,ucode,no,lvx,32.99,load-use l2 99.55 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.94; pipe_group inferred (class not measured directly)
+vsr,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgtfp,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,.rc: lat 32.00 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vrfim,altivec,vector,VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupklsh,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vaddsbs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vminsb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsrab,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgtsb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vcfux,altivec,vector,VB:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vspltisb,altivec,vector,,,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vpkpx,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vaddshs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vminsh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsrah,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgtsh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vcfsx,altivec,vector,VB:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vspltish,altivec,vector,,,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vupkhpx,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vaddsws,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vminsw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsraw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vcmpgtsw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vctuxs,altivec,vector,VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vspltisw,altivec,vector,,,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+stvxl128,vmx128,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; store rthroughput 3.50; pipe_group inferred (class not measured directly)
+vcmpbfp,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vctsxs,altivec,vector,VB:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupklpx,altivec,vector,VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsububm,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vavgub,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+lvlx128,vmx128,memory,,,11.49,ucode,no,lvx,32.98,"repeatable_noisy; load-use l2 98.58 (single run), cold 670.77 (single run), line-crossing 33.02; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.94; pipe_group inferred (class not measured directly)"
+vand,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmaxfp,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vslo,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsubuhm,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vavguh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+lvrx128,vmx128,memory,,,2.91,ucode,no,lvx,33.00,load-use line-crossing 32.96; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); pipe_group inferred (class not measured directly)
+vandc,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vminfp,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsro,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsubuwm,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vavguw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vor,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vxor,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vavgsb,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+stvlx128,vmx128,memory,,,2.92,ucode,no,stfd_stvx,,store rthroughput 3.50; pipe_group inferred (class not measured directly)
+vnor,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vavgsh,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+stvrx128,vmx128,memory,,,2.95,ucode,no,stfd_stvx,,store rthroughput 12.47; pipe_group inferred (class not measured directly)
+vsubcuw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vavgsw,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsububs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+lvlxl128,vmx128,memory,,,11.54,ucode,no,lvx,32.92,"load-use cold 673.86 (single run), line-crossing 32.90; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+mfvscr,altivec,control,,,40.01,ucode,yes,,,
+vsubuhs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+lvrxl128,vmx128,memory,,,2.92,ucode,no,lvx,32.99,"load-use l2 71.24 (single run), cold 668.09 (single run), line-crossing 33.02; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); pipe_group inferred (class not measured directly)"
+mtvscr,altivec,control,,,40.01,ucode,yes,,,
+vsubuws,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsubsbs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+stvlxl128,vmx128,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; store rthroughput 3.49; pipe_group inferred (class not measured directly)
+vsubshs,altivec,vector,VA:4.00;VB:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+stvrxl128,vmx128,memory,,,2.94,ucode,no,stfd_stvx,,store rthroughput 12.48; pipe_group inferred (class not measured directly)
+vsubsws,altivec,vector,VA:4.00;VB:4.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vperm128,vmx128,vector,VA128:4.00;VB128:4.00;VC128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler)
+vaddfp128,vmx128,vector,VA128:12.00;VB128:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.45x (57.71)"
+vsubfp128,vmx128,vector,VA128:12.00;VB128:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.40x (57.70); pipe_group inferred (class not measured directly)"
+vmulfp128,vmx128,vector,VA128:12.00;VB128:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.07x (57.70); pipe_group inferred (class not measured directly)"
+vmaddfp128,vmx128,vector,VA128:12.00;VB128:12.00;acc:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.44x (57.70)"
+vmaddcfp128,vmx128,vector,VA128:12.00;VB128:12.00;acc:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.00), indep/denormal.nj0 57.44x (57.70); pipe_group inferred (class not measured directly)"
+vnmsubfp128,vmx128,vector,VA128:12.00;VB128:12.00;acc:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal.nj0 7.50x (90.01), indep/denormal.nj0 57.44x (57.71); pipe_group inferred (class not measured directly)"
+vmsum3fp128,vmx128,vector,VA128:14.00;VB128:14.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal.nj0 61.51x (61.79); pipe_group inferred (class not measured directly)
+vmsum4fp128,vmx128,vector,VA128:14.00;VB128:14.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal.nj0 61.10x (61.77)
+vpkshss128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vand128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler)
+vpkshus128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vandc128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkswss128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vnor128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkswus128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vor128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkuhum128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vxor128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vpkuhus128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsel128,vmx128,vector,VA128:4.00;VB128:4.00;acc:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkuwum128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vslo128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkuwus128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vsro128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpeqfp128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97 issue 32.00 microcoded
+vrlw128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgefp128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vslw128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpgtfp128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,.rc: lat 31.99 tput 31.97 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vsraw128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpbfp128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 32.00 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vsrw128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcmpequw128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.99 tput 32.00 issue 32.00 microcoded; pipe_group inferred (class not measured directly)
+vpermwi128,vmx128,vector,VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcfpsxws128,vmx128,vector,VB128:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler)
+vcfpuxws128,vmx128,vector,VB128:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmaxfp128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vcsxwfp128,vmx128,vector,VB128:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vminfp128,vmx128,vector,VA128:4.00;VB128:4.00,1.01,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vcuxwfp128,vmx128,vector,VB128:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmrghw128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrfim128,vmx128,vector,VB128:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vmrglw128,vmx128,vector,VA128:4.00;VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrfin128,vmx128,vector,VB128:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupkhsb128,vmx128,vector,VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrfip128,vmx128,vector,VB128:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupklsb128,vmx128,vector,VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrfiz128,vmx128,vector,VB128:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vpkd3d128,vmx128,vector,VB128:4.00;acc:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vrefp128,vmx128,vector,VB128:14.00,2.00,2.00,ucode,undetermined,fp_vfp_n6,,data-dependent: indep/denormal.nj0 33.29x (66.69)
+vrsqrtefp128,vmx128,vector,VB128:14.00,2.00,2.00,ucode,no,fp_vfp_n6,,data-dependent: indep/denormal.nj0 33.28x (66.69); pipe_group inferred (class not measured directly)
+vexptefp128,vmx128,vector,VB128:12.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal.nj0 57.37x (57.71); pipe_group inferred (class not measured directly)
+vlogefp128,vmx128,vector,VB128:12.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal.nj0 57.45x (57.71); pipe_group inferred (class not measured directly)
+vrlimi128,vmx128,vector,VB128:4.00;acc:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vspltw128,vmx128,vector,VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler)
+vspltisw128,vmx128,vector,,,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vupkhsh128,vmx128,vector,VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+vupklsh128,vmx128,vector,VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+vupkd3d128,vmx128,vector,VB128:4.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+mulli,ppc,integer,RA:8.02,7.01,7.09,ucode,yes,mul,,
+subficx,ppc,integer,RA:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+cmpli,ppc,integer,,,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+cmpi,ppc,integer,,,1.02,ucode,no,int_cmp_crlogic,,
+addic,ppc,integer,RA:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+addic.,ppc,integer,RA:2.02,1.00,1.01,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+addi,ppc,integer,RA0:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler)
+addis,ppc,integer,RA0:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+bcx,ppc,branch,,,8.18,ucode,yes,br_t,,other issue-cost sources: issue.pair 4.99
+sc,ppc,branch,,,,,undetermined,br_t,,"no accepted issue cost (not timable, or runs disagree beyond 2 %); ucode not timable; pipe_group inferred (class not measured directly)"
+bx,ppc,branch,,,8.18,ucode,yes,br_t,,
+mcrf,ppc,control,CRFS:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,
+bclrx,ppc,branch,,,,,undetermined,br_t,,"no accepted issue cost (not timable, or runs disagree beyond 2 %); ucode not timable; pipe_group inferred (class not measured directly)"
+crnor,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+crandc,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+isync,ppc,integer,,,33.62,ucode,yes,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+crxor,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+crnand,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+crand,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+creqv,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,
+crorc,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+cror,ppc,control,CRBA:1.02;CRBB:1.02,1.00,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+bcctrx,ppc,branch,,,,,undetermined,br_t,,"no accepted issue cost (not timable, or runs disagree beyond 2 %); ucode not timable; pipe_group inferred (class not measured directly)"
+rlwimix,ppc,integer,RS:2.02;acc:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.05 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+rlwinmx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded
+rlwnmx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+ori,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+oris,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+xori,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+xoris,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+andi.,ppc,integer,RS:14.00,14.00,14.00,ucode,yes,recimm,,
+andis.,ppc,integer,RS:14.00,14.00,14.00,ucode,yes,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+rldiclx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+rldicrx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+rldicx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+rldimix,ppc,integer,RS:2.02;acc:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.05 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+rldclx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+rldcrx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+cmp,ppc,integer,,,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+tw,ppc,branch,,,1.02,ucode,no,br_t,,pipe_group inferred (class not measured directly)
+lvsl,altivec,vector,,,2.92,ucode,no,fp_vfp_n6,,repeatable_noisy; pipe_group inferred (class not measured directly)
+lvebx,altivec,memory,,,6.31,ucode,undetermined,lvx,35.77,"load-use l2 92.09 (single run), cold 673.73 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+subfcx,ppc,integer,RA:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+mulhdux,ppc,integer,RA:15.02;RB:15.02,14.00,14.00,ucode,yes,mul,,.rc: lat 27.01 tput 27.00 issue 27.01 microcoded; pipe_group inferred (class not measured directly)
+addcx,ppc,integer,RA:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+mulhwux,ppc,integer,RA:11.01;RB:11.01,11.00,11.01,ucode,yes,mul,,.rc: lat 24.00 tput 24.00 issue 24.00; pipe_group inferred (class not measured directly)
+mfcr,ppc,control,,,26.00,ucode,yes,int_cmp_crlogic,,
+lwarx,ppc,memory,,,64.80,ucode,undetermined,fp_vfp_n6,73.87,"repeatable_noisy; load-use l2 134.45 (single run), cold 729.27 (single run); pipe_group inferred (class not measured directly)"
+ldx,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use cold 640.95 (single run), line-crossing 59.01; pipe_group inferred (class not measured directly)"
+lwzx,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.04,"load-use l2 44.99 (single run), cold 640.98 (single run), line-crossing 63.01"
+slwx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,varshift,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded
+cntlzwx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+sldx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+andx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+cmpl,ppc,integer,,,1.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+lvsr,altivec,vector,,,2.93,ucode,no,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+lvehx,altivec,memory,,,6.31,ucode,no,lvx,35.74,load-use cold 671.45 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)
+subfx,ppc,integer,RA:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+ldux,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.04,"load-use l2 44.30 (single run), cold 640.21 (single run), line-crossing 59.01; load rthroughput (8 rotating destinations) 1.04; pipe_group inferred (class not measured directly)"
+dcbst,ppc,memory,,,92.19,ucode,undetermined,,,
+lwzux,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.04,"load-use l2 45.21 (single run), cold 640.45 (single run), line-crossing 63.01; load rthroughput (8 rotating destinations) 1.04; pipe_group inferred (class not measured directly)"
+cntlzdx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); pipe_group inferred (class not measured directly)
+andcx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+td,ppc,branch,,,1.02,ucode,no,br_t,,pipe_group inferred (class not measured directly)
+lvewx,altivec,memory,,,6.31,ucode,undetermined,lvx,35.76,"load-use l2 91.85 (single run), cold 673.47 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.94; pipe_group inferred (class not measured directly)"
+mulhdx,ppc,integer,RA:15.02;RB:15.02,14.00,14.00,ucode,yes,mul,,.rc: lat 27.01 tput 27.00 issue 27.01 microcoded; pipe_group inferred (class not measured directly)
+mulhwx,ppc,integer,RA:11.01;RB:11.01,11.00,11.01,ucode,yes,mul,,.rc: lat 24.00 tput 24.00 issue 24.00 microcoded; pipe_group inferred (class not measured directly)
+ldarx,ppc,memory,,,65.19,ucode,undetermined,fp_vfp_n6,73.81,load-use cold 728.47 (single run); pipe_group inferred (class not measured directly)
+dcbf,ppc,memory,,,92.19,ucode,undetermined,,,
+lbzx,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.04,"load-use l2 45.38 (single run), cold 640.82 (single run); pipe_group inferred (class not measured directly)"
+lvx,altivec,memory,,,6.31,ucode,undetermined,lvx,33.01,"load-use l2 99.00 (single run), cold 672.21 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+negx,ppc,integer,RA:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .oe.rc: lat 14.00 tput 14.00; pipe_group inferred (class not measured directly)
+lbzux,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.04,load-use cold 638.96 (single run); load rthroughput (8 rotating destinations) 1.04; pipe_group inferred (class not measured directly)
+norx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+stvebx,altivec,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; pipe_group inferred (class not measured directly)
+subfex,ppc,integer,RA:2.02;RB:2.02,2.02,2.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+addex,ppc,integer,RA:2.02;RB:2.02,2.02,2.02,ucode,no,int_cmp_crlogic,,
+mtcrf,ppc,control,,,20.00,ucode,yes,int_cmp_crlogic,,
+stdx,ppc,memory,,,2.90,ucode,no,stw,,pipe_group inferred (class not measured directly)
+stwcx,ppc,memory,,,80.07,ucode,undetermined,stw,,pipe_group inferred (class not measured directly)
+stwx,ppc,memory,,,2.90,ucode,no,stw,,repeatable_noisy; pipe_group inferred (class not measured directly)
+stvehx,altivec,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; pipe_group inferred (class not measured directly)
+stdux,ppc,memory,,,2.49,ucode,no,stw,,store rthroughput 2.91; pipe_group inferred (class not measured directly)
+stwux,ppc,memory,,,2.48,ucode,no,stw,,store rthroughput 2.91; pipe_group inferred (class not measured directly)
+stvewx,altivec,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; pipe_group inferred (class not measured directly)
+subfzex,ppc,integer,RA:2.02,2.02,2.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+addzex,ppc,integer,RA:2.02,2.02,2.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+stdcx,ppc,memory,,,80.07,ucode,undetermined,stw,,pipe_group inferred (class not measured directly)
+stbx,ppc,memory,,,2.91,ucode,no,stw,,repeatable_noisy; pipe_group inferred (class not measured directly)
+stvx,altivec,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; store rthroughput 3.50; pipe_group inferred (class not measured directly)
+subfmex,ppc,integer,RA:2.02,2.02,2.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+mulldx,ppc,integer,RA:14.02;RB:14.02,13.00,13.01,ucode,yes,mul,,.oe.rc: lat 28.00 tput 28.00; .rc: lat 26.00 tput 26.00 issue 26.00 microcoded
+addmex,ppc,integer,RA:2.02,2.02,2.02,ucode,no,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+mullwx,ppc,integer,RA:11.01;RB:11.01,11.00,11.01,ucode,undetermined,mul,,.oe: lat 11.01 tput 11.00 issue 11.01 microcoded; .oe.rc: lat 25.01 tput 25.00; .rc: lat 24.00 tput 24.00 issue 24.00
+dcbtst,ppc,memory,,,1.02,ucode,no,,,
+stbux,ppc,memory,,,2.49,ucode,no,stw,,store rthroughput 2.92; pipe_group inferred (class not measured directly)
+addx,ppc,integer,RA:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler)
+dcbt,ppc,memory,,,1.02,ucode,no,,,
+lhzx,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use l2 44.96 (single run), cold 640.76 (single run), line-crossing 59.01; pipe_group inferred (class not measured directly)"
+eqvx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+eciwx,ppc,memory,,,,,undetermined,,,"no accepted issue cost (not timable, or runs disagree beyond 2 %); ucode not timable"
+lhzux,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.04,"load-use l2 44.99 (single run), cold 639.98 (single run), line-crossing 59.01; load rthroughput (8 rotating destinations) 1.04; pipe_group inferred (class not measured directly)"
+xorx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+mfspr,ppc,control,,,3.01,ucode,yes,,,
+lwax,ppc,memory,,,23.01,ucode,yes,fp_vfp_n6,22.15,"load-use l2 83.41 (single run), cold 670.43 (single run), line-crossing 78.18; pipe_group inferred (class not measured directly)"
+dst,altivec,memory,,,0.67,ucode,no,,,
+lhax,ppc,memory,,,23.01,ucode,yes,fp_vfp_n6,22.15,"load-use l2 83.69 (single run), cold 669.79 (single run), line-crossing 73.03; pipe_group inferred (class not measured directly)"
+lvxl,altivec,memory,,,6.31,ucode,undetermined,lvx,32.91,"load-use l2 99.25 (single run), cold 672.35 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+mftb,ppc,control,,,44.00,ucode,yes,,,
+lwaux,ppc,memory,,,22.00,ucode,yes,fp_vfp_n6,21.28,"load-use cold 670.42 (single run), line-crossing 75.09; pipe_group inferred (class not measured directly)"
+dstst,altivec,memory,,,0.67,ucode,no,,,
+lhaux,ppc,memory,,,22.00,ucode,yes,fp_vfp_n6,21.28,"load-use l2 84.18 (single run), cold 670.46 (single run), line-crossing 71.33; pipe_group inferred (class not measured directly)"
+sthx,ppc,memory,,,2.91,ucode,no,stw,,pipe_group inferred (class not measured directly)
+orcx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+ecowx,ppc,memory,,,,,undetermined,,,"no accepted issue cost (not timable, or runs disagree beyond 2 %); ucode not timable"
+sthux,ppc,memory,,,2.49,ucode,no,stw,,store rthroughput 2.92; pipe_group inferred (class not measured directly)
+orx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded
+divdux,ppc,integer,RA:18.02;RB:18.02,18.02,28.02,ucode,yes,div,,"other issue-cost sources: lat.data 18.02; data-dependent: indep/w32 2.55x (46.02), indep/wide 4.33x (78.02); .oe.rc: lat 32.02 tput 32.01; .rc: lat 30.06 tput 30.00 issue 40.00 microcoded; pipe_group inferred (class not measured directly)"
+divwux,ppc,integer,RA:18.02;RB:18.02,18.02,28.02,ucode,yes,div,,"other issue-cost sources: lat.data 18.02; data-dependent: indep/by_one 2.67x (48.02), indep/wide 2.55x (46.02), indep/wide_wide 1.78x (32.02); .oe.rc: lat 32.02 tput 32.01; .rc: lat 30.06 tput 30.00 issue 40.00 microcoded; pipe_group inferred (class not measured directly)"
+mtspr,ppc,control,,,1.02,ucode,no,,,
+nandx,ppc,integer,RS:2.02;RB:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+stvxl,altivec,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; store rthroughput 3.50; pipe_group inferred (class not measured directly)
+divdx,ppc,integer,RA:18.02;RB:18.02,18.02,28.02,ucode,yes,div,,"other issue-cost sources: lat.data 18.02; data-dependent: indep/w32 2.55x (46.02), indep/wide 4.33x (78.02); .oe.rc: lat 32.02 tput 32.02; .rc: lat 30.06 tput 30.00 issue 40.00 microcoded"
+divwx,ppc,integer,RA:18.02;RB:18.02,18.02,28.02,ucode,yes,div,,"other issue-cost sources: lat.data 18.02; data-dependent: indep/by_one 2.55x (46.02), indep/neg_wide 2.44x (44.02), indep/wide 2.55x (46.02), indep/wide_wide 1.78x (32.02); .oe.rc: lat 32.02 tput 32.01; .rc: lat 30.06 tput 30.00 issue 40.00 microcoded"
+lvlx,cell-vmx,memory,,,6.32,ucode,undetermined,lvx,32.91,"load-use l2 99.27 (single run), cold 671.67 (single run), line-crossing 33.02; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.94"
+ldbrx,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use cold 639.86 (single run), line-crossing 71.81; pipe_group inferred (class not measured directly)"
+lswx,ppc,memory,,,38.00,sysops.string,undetermined,fp_vfp_n6,,"single_source; ucode not timable; by bytes: 4B 38.00, 8B 39.01, 16B 41.01, 32B 45.01; pipe_group inferred (class not measured directly)"
+lwbrx,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use l2 44.97 (single run), cold 639.56 (single run), line-crossing 63.01; pipe_group inferred (class not measured directly)"
+lfsx,ppc,memory,,,8.55,ucode,undetermined,lfd,32.98,"load-use l2 99.38 (single run), cold 672.35 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+srwx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+srdx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+lvrx,cell-vmx,memory,,,2.93,ucode,no,lvx,32.96,"load-use l2 71.40 (single run), cold 668.67 (single run), line-crossing 33.02; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); pipe_group inferred (class not measured directly)"
+lfsux,ppc,memory,,,10.65,ucode,no,lfd,32.92,"load-use l2 99.68 (single run), cold 672.35 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+lswi,ppc,memory,,,15.01,sysops.string,undetermined,fp_vfp_n6,,"single_source; ucode not timable; by bytes: 4B 15.01, 8B 16.00, 16B 18.00, 32B 22.00; pipe_group inferred (class not measured directly)"
+sync,ppc,integer,,,162.26,ucode,yes,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+lfdx,ppc,memory,,,,,undetermined,lfd,32.99,"no accepted issue cost (not timable, or runs disagree beyond 2 %); load-use l2 99.50 (single run), cold 672.71 (single run), line-crossing 89.83; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); pipe_group inferred (class not measured directly)"
+lfdux,ppc,memory,,,10.65,ucode,undetermined,lfd,32.99,"repeatable_noisy; load-use l2 98.92 (single run), cold 672.02 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+stvlx,cell-vmx,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; store rthroughput 3.50; pipe_group inferred (class not measured directly)
+stdbrx,ppc,memory,,,2.90,ucode,no,stw,,pipe_group inferred (class not measured directly)
+stswx,ppc,memory,,,38.00,sysops.string,undetermined,stw,,"single_source; ucode not timable; by bytes: 4B 38.00, 8B 39.01, 16B 41.01, 32B 45.01; pipe_group inferred (class not measured directly)"
+stwbrx,ppc,memory,,,2.91,ucode,no,stw,,pipe_group inferred (class not measured directly)
+stfsx,ppc,memory,,,3.58,ucode,no,stfd_stvx,,repeatable_noisy; pipe_group inferred (class not measured directly)
+stvrx,cell-vmx,memory,,,2.94,ucode,no,stfd_stvx,,store rthroughput 12.48; pipe_group inferred (class not measured directly)
+stfsux,ppc,memory,,,3.65,ucode,no,stfd_stvx,,pipe_group inferred (class not measured directly)
+stswi,ppc,memory,,,15.01,sysops.string,undetermined,stw,,"single_source; ucode not timable; by bytes: 4B 15.01, 8B 16.00, 16B 18.00, 32B 22.00; pipe_group inferred (class not measured directly)"
+stfdx,ppc,memory,,,3.60,ucode,no,stfd_stvx,,repeatable_noisy; pipe_group inferred (class not measured directly)
+stfdux,ppc,memory,,,3.65,ucode,no,stfd_stvx,,pipe_group inferred (class not measured directly)
+lvlxl,cell-vmx,memory,,,6.30,ucode,undetermined,lvx,32.96,"load-use l2 99.28 (single run), cold 672.34 (single run), line-crossing 33.02; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.93; pipe_group inferred (class not measured directly)"
+lhbrx,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use cold 640.22 (single run), line-crossing 59.01; pipe_group inferred (class not measured directly)"
+srawx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+sradx,ppc,integer,RS:16.00;RB:16.00,16.00,16.00,ucode,yes,int_cmp_crlogic,,.rc: lat 18.00 tput 18.00 issue 18.00 microcoded; pipe_group inferred (class not measured directly)
+lvrxl,cell-vmx,memory,,,2.91,ucode,no,lvx,32.91,"repeatable_noisy; load-use l2 71.18 (single run), cold 667.54 (single run), line-crossing 33.02; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); pipe_group inferred (class not measured directly)"
+dss,altivec,memory,,,0.67,ucode,no,,,
+srawix,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+sradix,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 14.00 tput 14.00 issue 14.00 microcoded; pipe_group inferred (class not measured directly)
+eieio,ppc,integer,,,92.01,ucode,undetermined,int_cmp_crlogic,,pipe_group inferred (class not measured directly)
+stvlxl,cell-vmx,memory,,,2.92,ucode,no,stfd_stvx,,repeatable_noisy; store rthroughput 3.50; pipe_group inferred (class not measured directly)
+sthbrx,ppc,memory,,,2.90,ucode,no,stw,,repeatable_noisy; pipe_group inferred (class not measured directly)
+extshx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 16.00 tput 16.00 issue 16.00 microcoded; pipe_group inferred (class not measured directly)
+stvrxl,cell-vmx,memory,,,2.93,ucode,no,stfd_stvx,,store rthroughput 12.47; pipe_group inferred (class not measured directly)
+extsbx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 16.00 tput 16.00 issue 16.00 microcoded; pipe_group inferred (class not measured directly)
+icbi,ppc,memory,,,72.01,ucode,undetermined,,,
+stfiwx,ppc,memory,,,3.58,ucode,no,stfd_stvx,,repeatable_noisy
+extswx,ppc,integer,RS:2.02,1.02,1.02,ucode,no,int_cmp_crlogic,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 16.00 tput 16.00 issue 16.00 microcoded; pipe_group inferred (class not measured directly)
+dcbz,ppc,memory,,,55.04,ucode,yes,,,
+mfocrf,ppc,control,,,26.00,ucode,yes,,,
+mtocrf,ppc,control,,,1.02,ucode,no,,,
+dcbz128,xenon,memory,,,55.05,ucode,yes,,,
+xdcbt,xenon,memory,,,1.02,ucode,no,,,
+lwz,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use l2 44.61 (single run), cold 640.63 (single run), line-crossing 59.01"
+lwzu,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.04,"load-use l2 45.09 (single run), cold 640.27 (single run), line-crossing 63.01; load rthroughput (8 rotating destinations) 1.04"
+lbz,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.04,"load-use l2 45.30 (single run), cold 641.04 (single run)"
+lbzu,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.03,"load-use l2 45.13 (single run), cold 641.00 (single run); load rthroughput (8 rotating destinations) 1.04; pipe_group inferred (class not measured directly)"
+stw,ppc,memory,,,2.90,ucode,no,stw,,repeatable_noisy
+stwu,ppc,memory,,,2.49,ucode,no,stw,,store rthroughput 2.92
+stb,ppc,memory,,,2.90,ucode,no,stw,,repeatable_noisy; pipe_group inferred (class not measured directly)
+stbu,ppc,memory,,,2.48,ucode,no,stw,,store rthroughput 2.91; pipe_group inferred (class not measured directly)
+lhz,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use l2 44.92 (single run), cold 641.51 (single run), line-crossing 57.01; pipe_group inferred (class not measured directly)"
+lhzu,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.04,"load-use cold 639.73 (single run), line-crossing 59.01; load rthroughput (8 rotating destinations) 1.04; pipe_group inferred (class not measured directly)"
+lha,ppc,memory,,,21.00,ucode,yes,fp_vfp_n6,20.15,"load-use l2 81.52 (single run), cold 671.38 (single run), line-crossing 69.18"
+lhau,ppc,memory,,,22.00,ucode,yes,fp_vfp_n6,21.28,"load-use l2 84.19 (single run), cold 671.90 (single run), line-crossing 71.32; pipe_group inferred (class not measured directly)"
+sth,ppc,memory,,,2.91,ucode,no,stw,,repeatable_noisy; pipe_group inferred (class not measured directly)
+sthu,ppc,memory,,,2.48,ucode,no,stw,,store rthroughput 2.92; pipe_group inferred (class not measured directly)
+lmw,ppc,memory,,,17.01,sysops.string,undetermined,fp_vfp_n6,,single_source; ucode not timable; by bytes: 4B 17.01; pipe_group inferred (class not measured directly)
+stmw,ppc,memory,,,17.01,sysops.string,undetermined,stw,,"single_source; ucode not timable; by bytes: 4B 17.01, 16B 20.00, 32B 24.00, 72B 49.01; pipe_group inferred (class not measured directly)"
+lfs,ppc,memory,,,2.92,ucode,no,lfd,32.91,"load-use l2 99.14 (single run), cold 672.16 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method)"
+lfsu,ppc,memory,,,10.65,ucode,undetermined,lfd,32.96,repeatable_noisy; load-use cold 671.28 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.94; pipe_group inferred (class not measured directly)
+lfd,ppc,memory,,,2.92,ucode,no,lfd,32.96,"load-use l2 99.57 (single run), cold 672.27 (single run), line-crossing 88.35; FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method)"
+lfdu,ppc,memory,,,10.69,ucode,undetermined,lfd,32.99,"repeatable_noisy; load-use l2 99.42 (single run), cold 672.19 (single run); FP/VR load-use measured through an fcmpu/vcmpequw->CR chain: upper bound (ldst.lat method); load rthroughput (8 rotating destinations) 2.94; pipe_group inferred (class not measured directly)"
+stfs,ppc,memory,,,3.60,ucode,no,stfd_stvx,,repeatable_noisy; pipe_group inferred (class not measured directly)
+stfsu,ppc,memory,,,3.65,ucode,no,stfd_stvx,,pipe_group inferred (class not measured directly)
+stfd,ppc,memory,,,3.60,ucode,no,stfd_stvx,,repeatable_noisy
+stfdu,ppc,memory,,,3.64,ucode,no,stfd_stvx,,pipe_group inferred (class not measured directly)
+ld,ppc,memory,,,1.02,ucode,no,fp_vfp_n6,5.03,"load-use cold 641.22 (single run), line-crossing 57.01"
+ldu,ppc,memory,,,1.66,ucode,no,fp_vfp_n6,5.04,"load-use l2 45.16 (single run), cold 642.23 (single run), line-crossing 59.01; load rthroughput (8 rotating destinations) 1.04; pipe_group inferred (class not measured directly)"
+lwa,ppc,memory,,,24.00,ucode,undetermined,fp_vfp_n6,23.27,"load-use l2 88.61 (single run), cold 672.38 (single run), line-crossing 81.41; pipe_group inferred (class not measured directly)"
+fdivsx,ppc,fpu,FA:74.01;FB:74.01,73.99,74.00,ucode,undetermined,fdiv,,"data-dependent: chain/inf 0.23x (17.02), chain/nan 0.32x (24.03), chain/zero 0.23x (17.02), indep/denormal_in 1.27x (94.01), indep/inf 0.23x (17.02), indep/nan 0.32x (24.03), indep/zero 0.23x (17.02); .rc: lat 92.19 tput 91.93; pipe_group inferred (class not measured directly)"
+fsubsx,ppc,fpu,FA:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/nan 6.60x (66.00), indep/denormal_in 46.18x (47.26), indep/nan 35.24x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+faddsx,ppc,fpu,FA:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/nan 6.60x (66.00), indep/denormal_in 45.77x (47.27), indep/nan 35.55x (36.40); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fsqrtsx,ppc,fpu,FB:84.02,84.00,84.02,ucode,undetermined,fsqrt,,"data-dependent: indep/denormal_in 1.24x (104.04), indep/inf 0.20x (17.03), indep/nan 0.29x (24.03), indep/neg 0.20x (17.02), indep/zero 0.20x (17.02); .rc: lat 104.00 tput 103.71; pipe_group inferred (class not measured directly)"
+fresx,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal_in 45.77x (47.26), indep/nan 35.24x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fmulsx,ppc,fpu,FA:10.00;FC:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/nan 6.60x (66.00), indep/denormal_in 45.77x (47.27), indep/nan 35.24x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fmsubsx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.26), indep/nan 35.26x (36.40); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fmaddsx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.27), indep/nan 35.24x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fnmsubsx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/nan 6.60x (66.00), indep/denormal_in 45.77x (47.26), indep/nan 35.25x (36.40); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fnmaddsx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.27), indep/nan 35.56x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+std,ppc,memory,,,2.90,ucode,no,stw,,repeatable_noisy
+stdu,ppc,memory,,,2.48,ucode,no,stw,,store rthroughput 2.92; pipe_group inferred (class not measured directly)
+fcmpu,ppc,fpu,,,16.02,ucode,yes,fp_vfp_n6,,
+frspx,ppc,fpu,FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal_in 45.77x (47.26), indep/nan 35.56x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fctiwx,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal_in 45.78x (47.28); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+fctiwzx,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal_in 45.78x (47.27); .rc: lat 31.97 tput 31.97
+fdivx,ppc,fpu,FA:74.01;FB:74.01,74.00,73.98,ucode,undetermined,fdiv,,"data-dependent: chain/denormal_in 1.27x (94.01), chain/inf 0.23x (17.02), chain/nan 0.32x (24.03), chain/zero 0.23x (17.02), indep/denormal_in 1.27x (94.01), indep/inf 0.23x (17.02), indep/nan 0.32x (24.03), indep/zero 0.23x (17.02); .rc: lat 92.20 tput 91.94"
+fsubx,ppc,fpu,FA:10.00;FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal_in 7.40x (74.00), chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.28), indep/nan 35.24x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+faddx,ppc,fpu,FA:10.00;FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal_in 7.40x (74.00), chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.25), indep/nan 35.88x (36.40); .rc: lat 31.97 tput 31.97"
+fsqrtx,ppc,fpu,FB:84.02,84.00,84.02,ucode,undetermined,fsqrt,,"data-dependent: indep/denormal_in 1.24x (104.04), indep/inf 0.20x (17.02), indep/nan 0.29x (24.03), indep/neg 0.20x (17.02), indep/zero 0.20x (17.02); .rc: lat 103.97 tput 103.56"
+fselx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+fmulx,ppc,fpu,FA:10.00;FC:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal_in 7.40x (74.00), chain/nan 6.60x (66.00), indep/denormal_in 45.77x (47.26), indep/nan 35.26x (36.40); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+frsqrtex,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal_in 45.76x (47.26), indep/nan 35.25x (36.40); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fmsubx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal_in 7.40x (74.00), chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.26), indep/nan 35.24x (36.39); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fmaddx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal_in 7.40x (74.00), chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.27), indep/nan 35.25x (36.39); .rc: lat 31.97 tput 31.97"
+fnmsubx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal_in 7.40x (74.00), chain/nan 6.60x (66.00), indep/denormal_in 46.59x (47.27), indep/nan 35.25x (36.40); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fnmaddx,ppc,fpu,FA:10.00;FC:10.00;FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,"rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: chain/denormal_in 7.40x (74.00), chain/nan 6.60x (66.00), indep/denormal_in 45.78x (47.26), indep/nan 35.25x (36.40); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)"
+fcmpo,ppc,fpu,,,16.02,ucode,yes,fp_vfp_n6,,pipe_group inferred (class not measured directly)
+mtfsb1x,ppc,control,,,1.01,ucode,no,,,
+fnegx,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+mcrfs,ppc,control,,,13.01,ucode,yes,,,
+mtfsb0x,ppc,control,,,1.01,ucode,no,,,
+fmrx,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+mtfsfix,ppc,control,,,1.01,ucode,no,,,
+fnabsx,ppc,fpu,FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+fabsx,ppc,fpu,FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+mffsx,ppc,control,,,30.00,ucode,yes,,,
+mtfsfx,ppc,control,,,1.01,ucode,no,,,
+fctidx,ppc,fpu,FB:10.00,1.01,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal_in 45.77x (47.26); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+fctidzx,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); data-dependent: indep/denormal_in 45.79x (47.27); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)
+fcfidx,ppc,fpu,FB:10.00,1.00,1.01,ucode,no,fp_vfp_n6,,rthroughput upper bound (not slower than the 1-cycle filler); .rc: lat 31.97 tput 31.97; pipe_group inferred (class not measured directly)

@@ -36,6 +36,7 @@ int xts_plan_build(xts_plan_t *p, const xts_profile_t *prof);   /* enumerate eve
 int xts_block_case(const xts_block_t *b, int k);          /* case index of the k-th case of the block */
 int xts_block_rel(const xts_block_t *b, int case_index);  /* k of a case index in the block, -1 if not in it */
 void xts_plan_condvec(const xts_block_t *b, xts_condvec_t *cv);
+uint64_t xts_run_seed(void);   /* SEED=<n> build option: base seed of rows without their own */
 uint64_t xts_case_seed(const xts_block_t *b, const xts_case_t *c, int repeat);
 
 /* ---- breadcrumbs and crash/hang reports (crash.c) ----

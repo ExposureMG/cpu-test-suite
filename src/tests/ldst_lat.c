@@ -15,6 +15,13 @@
  *                     latency = step - ref_cr + ref_pure, ref_cr = same chain with ld + cmpd. ASSUMES fcmpu/vcmpequw.
  *                     reach CR as fast as cmpd (detail.method says so); the level-to-level differences are exact.
  *   use.<form>      FPR/VR forms, L1: in-order use stall, F + dependent consumer vs F + independent consumer (extra)
+ *   luse.<form>[.n6] direct load-to-use, L1, no CR detour: episodes of
+ *                     F t,0(r3) ; c1 = op(t,t) ; c2 = op(c1,c1) ... cN ; isync
+ *                   minus the same episodes with c1 = op(z,z) (z independent of the load); N = 14 (.n6: 6, method check:
+ *                   both N must agree). The isync makes every episode wait for its chain, so the load cannot run ahead
+ *                   as it does in use.* (the FP/VMX pipes are decoupled from issue). Value = cycles the dependent chain
+ *                   starts later than the independent one. op: fadd (FPR), vand / vand128 (VR), add (GPR controls lwz,
+ *                   ld: compare them with lat.lwz / lat.ld to calibrate the offset against the pointer chase).
  *   ltp.<form>      load reciprocal throughput: 8 rotating independent destinations and 8 fixed addresses (identical
  *                   address footprint at every depth, depths 8..64, method v2); data_align axis honoured
  *   stp.<form>      store reciprocal throughput, 8 addresses in one line and in 8 lines; data_align axis honoured
@@ -34,7 +41,7 @@
 #include <xts/xts.h>
 #include "mem_util.h"
 
-enum { K_LAT = 1, K_USE, K_LTP, K_STP, K_LHS, K_RT, K_MIS, K_RESV };
+enum { K_LAT = 1, K_USE, K_LTP, K_STP, K_LHS, K_RT, K_MIS, K_RESV, K_LUSE };
 enum { R_EXACT = 0, R_INSIDE, R_COVERS, R_PARTIAL, R_ADJ_AFTER, R_ADJ_BEFORE, R_SAMELINE, R_N };
 static const char *const rel_name[R_N] = { "exact", "inside", "covers", "partial", "adj_after", "adj_before", "sameline" };
 enum { MK_MIS1 = 1, MK_MIS4, MK_LINE, MK_PG4K, MK_PG64K, MK_N };
@@ -366,6 +373,50 @@ static double tp_run(xts_ctx_t *ctx, tp_arg_t *a, xts_tspec_t *s, xts_tresult_t 
   return mu_measure(ctx, s, r);
 }
 
+/* ------------------------------------------------------------------------------------------ direct load-to-use */
+#define LUSE_N 14
+typedef struct luse_arg {
+  const mu_form_t *f;
+  int n;                   /* chain length */
+  int dep;                 /* 1: chain starts from the loaded register, 0: from an independent one */
+  int idx;                 /* RB value for X-forms */
+  uint64_t base;
+} luse_arg_t;
+
+static int luse_body(xts_kbuf_t *k, int depth, void *arg)
+{
+  luse_arg_t *a = arg;
+  const mu_form_t *f = a->f;
+  int v128 = f->file == 'v' && f->vr128;
+  int t = f->file == 'g' ? 4 : v128 ? 101 : 1;          /* loaded register */
+  int z = f->file == 'g' ? 7 : v128 ? 103 : 3;          /* independent source (zero) */
+  int c = f->file == 'g' ? 6 : v128 ? 120 : 2;          /* chain register */
+  for (int i = 0; i < depth; i++) {
+    mu_emit_mem(k, f->insn, t, 3, f->xform ? 5 : 0);
+    for (int j = 0; j < a->n; j++) {
+      int src = j ? c : a->dep ? t : z;
+      if (f->file == 'g') xk_emit(k, XI_addx, 0, c, src, src);
+      else if (f->file == 'f') xk_emit(k, XI_faddx, 0, c, src, src);
+      else if (v128) xk_emit(k, XI_vand128, 0, c, src, src);
+      else xk_emit(k, XI_vand, 0, c, src, src);
+    }
+    xk_emit(k, XI_isync, 0);
+  }
+  return 0;
+}
+
+static int luse_setup(xts_exec_t *x, void *arg)
+{
+  luse_arg_t *a = arg;
+  xts_set_gpr(x, 3, a->base);
+  xts_set_gpr(x, 5, (uint64_t)a->idx);
+  xts_set_gpr(x, 7, 0);
+  xts_vr_t zv = xts_vr4(0, 0, 0, 0);
+  for (int r = 0; r < 32; r++) xts_set_fpr(x, r, 0);    /* +0.0 everywhere: no denormal / NaN paths */
+  for (int r = 0; r < 128; r++) xts_set_vr(x, r, zv);
+  return 0;
+}
+
 /* -------------------------------------------------------------------------------------------------- LHS kernels */
 typedef struct lhs_arg {
   const mu_form_t *st, *ld;
@@ -533,6 +584,17 @@ static int ll_enum(xts_caselist_t *cl)
       if (!c) return -1;
       c->insn = id;
       c->arg[0] = pass == 0 ? K_LAT : pass == 1 ? K_USE : K_LTP;
+    }
+  for (int n6 = 0; n6 < 2; n6++)                           /* direct load-to-use (.n6: the method check subset) */
+    for (int id = 0; id < xts_isa_count; id++) {
+      if (mu_form_of(id, &f) < 0 || !f.load || f.resv) continue;
+      if (f.file == 'g' && id != XI_lwz && id != XI_ld) continue;
+      if (n6 && id != XI_lwz && id != XI_lfd && id != XI_lfs && id != XI_lvx && id != XI_lvx128) continue;
+      xts_case_t *c = xts_case_addf(cl, n6 ? "luse.%s.n6" : "luse.%s", xts_isa[id].mnem);
+      if (!c) return -1;
+      c->insn = id;
+      c->arg[0] = K_LUSE;
+      c->arg[1] = n6 ? 6 : LUSE_N;
     }
   for (int id = 0; id < xts_isa_count; id++) {
     if (mu_form_of(id, &f) < 0 || f.load || f.resv) continue;
@@ -702,6 +764,54 @@ static int run_use(const xts_case_t *c, xts_ctx_t *ctx)
   xj_kv_double(&d.j, "ind", ind);
   xts_time_emit_diff(ctx, &sd, &rd, &si, &ri, c->insn,
                      &(xts_temit_t){ .metric = "extra", .no_negative = 1, .extra_json = mu_det_end(&d) });
+  return 0;
+}
+
+static double luse_run(xts_ctx_t *ctx, luse_arg_t *a, xts_tspec_t *s, xts_tresult_t *r, const char *unit)
+{
+  *s = (xts_tspec_t)XTS_TSPEC_DEFAULT;
+  s->unit = unit;
+  s->body = luse_body;
+  s->setup = luse_setup;
+  s->arg = a;
+  s->iters = 128;
+  xts_time_line_layout(s, 1);
+  return mu_measure(ctx, s, r);
+}
+
+static int run_luse(const xts_case_t *c, xts_ctx_t *ctx)
+{
+  if (xts_env.cache_state || xts_env.data_kind) return 0;
+  mu_form_t f;
+  if (mu_form_of(c->insn, &f) < 0 || region_prep() < 0) return -1;
+  static luse_arg_t a, b;
+  memset(&a, 0, sizeof a);
+  a.f = &f;
+  a.n = (int)c->arg[1];
+  a.dep = 1;
+  a.base = region.addr + 4096;                          /* zeroed and warm (region_prep), 16-byte aligned */
+  a.idx = f.lr == 2 ? 16 : 0;                           /* lvrx: EA 16 reads the quadword below it */
+  b = a;
+  b.dep = 0;
+  const char *op = f.file == 'g' ? "add" : f.file == 'f' ? "fadd" : f.vr128 ? "vand128" : "vand";
+  char ud[96], ui[96];
+  snprintf(ud, sizeof ud, "%s ; %d x %s from the load ; isync", xts_isa[c->insn].mnem, a.n, op);
+  snprintf(ui, sizeof ui, "%s ; %d x %s from an independent register ; isync", xts_isa[c->insn].mnem, a.n, op);
+  xts_tspec_t sd, si;
+  xts_tresult_t rd, ri;
+  double dep = luse_run(ctx, &a, &sd, &rd, ud);
+  double ind = luse_run(ctx, &b, &si, &ri, ui);
+  mu_det_t d;
+  mu_det_begin(&d);
+  det_common(&d, &f, "l1", 0, 0, 0);
+  xj_kv_str(&d.j, "method", "direct: (load ; N dependent ops from the load ; isync) - (same, chain from an independent "
+                           "register); cycles the chain starts later");
+  xj_kv_str(&d.j, "consumer", op);
+  xj_kv_int(&d.j, "chain", a.n);
+  xj_kv_double(&d.j, "dep", dep);
+  xj_kv_double(&d.j, "ind", ind);
+  xts_time_emit_diff(ctx, &sd, &rd, &si, &ri, c->insn,
+                     &(xts_temit_t){ .metric = "latency", .no_negative = 1, .extra_json = mu_det_end(&d) });
   return 0;
 }
 
@@ -902,6 +1012,7 @@ static int ll_run(const xts_case_t *c, xts_ctx_t *ctx)
   case K_RT: return run_rt(c, ctx);
   case K_MIS: return run_mis(c, ctx);
   case K_RESV: return run_resv(c, ctx);
+  case K_LUSE: return run_luse(c, ctx);
   default: return -1;
   }
 }

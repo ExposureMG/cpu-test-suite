@@ -325,6 +325,7 @@ class Run:
             ("complete", complete), ("status", status), ("reasons", reasons),
             ("run_nonce", "%016x" % self.nonce), ("console_tag", self.tag()), ("run_id", self.run_id()),
             ("profile", (self.hello or {}).get("profile")), ("build_id", (self.hello or {}).get("build_id")),
+            ("seed", (self.hello or {}).get("seed", 1)),
             ("hello_seen", self.hello is not None), ("hello_messages", self.hello_msgs), ("end_seen", self.end is not None),
             ("last_seq", last_seq), ("max_seq_seen", self.max_seq),
             ("frames_received", self.received), ("frames_unique", len(self.frames)), ("duplicates", self.duplicates),

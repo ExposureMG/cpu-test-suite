@@ -411,6 +411,7 @@ static int hello_json(char *buf, int cap)
   xj_kv_str(&j, "run_id", run_id);
   xj_kv_str(&j, "console_tag", tag);
   xj_kv_int(&j, "crumb_every_timing", xts_crumb_every_timing);
+  xj_kv_uint(&j, "seed", xts_run_seed());
   xj_key(&j, "quarantine");
   xj_arr(&j);
   for (int i = 0; i < nquar; i++) {
