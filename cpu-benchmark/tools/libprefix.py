@@ -11,7 +11,9 @@ with "objcopy --prefix-symbols".  Symbols that are still undefined after the
 closure (__errno, libgcc helpers, ...) are renamed back to their real names,
 so the final link binds them to the linking toolchain's runtime.  With
 --align N every member's code and tables start on an N-byte boundary inside
-the object (tools/place.py), as the kernels' do in the images.
+the object (tools/place.py), as the kernels' do in the images; --shift S
+moves every member's code S bytes past that boundary (layout shifts, make
+SHIFTS=...), its tables stay on it.
 
     tools/libprefix.py --tc <toolchain root> --prefix xenon3_lib_ \\
         --header include/bench_lib.h -o build/xenon3/lib_xenon3.o
@@ -250,6 +252,9 @@ def main():
                     help="extra symbol never to pull (repeatable)")
     ap.add_argument("--align", type=int, default=0,
                     help="start each member's .text/.rodata on this boundary")
+    ap.add_argument("--shift", type=int, default=0,
+                    help="start each member's code this many bytes after the "
+                         "--align boundary (tools/place.py --shift)")
     ap.add_argument("--keep", action="store_true",
                     help="keep the work directory")
     ap.add_argument("-q", "--quiet", action="store_true",
@@ -304,7 +309,7 @@ def main():
     paths = []
     for i, m in enumerate(pulled):
         dst = os.path.join(work, "placed-%03d.o" % i)
-        place.place(a.align, m.path, dst)
+        place.place(a.align, m.path, dst, a.shift)
         paths.append(dst)
     combined = os.path.join(work, "combined.o")
     run([tools["ld"], "-m", "elf32ppc", "-r", "-o", combined] + paths)

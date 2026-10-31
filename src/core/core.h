@@ -36,7 +36,9 @@ int xts_plan_build(xts_plan_t *p, const xts_profile_t *prof);   /* enumerate eve
 int xts_block_case(const xts_block_t *b, int k);          /* case index of the k-th case of the block */
 int xts_block_rel(const xts_block_t *b, int case_index);  /* k of a case index in the block, -1 if not in it */
 void xts_plan_condvec(const xts_block_t *b, xts_condvec_t *cv);
-uint64_t xts_run_seed(void);   /* SEED=<n> build option: base seed of rows without their own */
+uint64_t xts_run_seed(void);   /* SEED=<n> build option: base seed of rows without their own (+ pass index) */
+void xts_set_run_seed(uint64_t seed);   /* base seed for plans built (or reseeded) from now on */
+void xts_plan_reseed(xts_plan_t *p);    /* rows without their own seed take the current run seed */
 uint64_t xts_case_seed(const xts_block_t *b, const xts_case_t *c, int repeat);
 
 /* ---- breadcrumbs and crash/hang reports (crash.c) ----
@@ -135,6 +137,8 @@ void xts_sink_block_end(const char *key, const char *extra_members);   /* BLOCK 
 /* END x3 {"status", "last_seq", "messages", "rec_hash", ...} then drain; 0 ok, -1 drain timeout */
 int xts_sink_end(const char *status);
 void xts_sink_close(void);
+/* multi-pass session of the run being opened: END carries "session" {id, pass (1-based), passes}; passes <= 1 = none */
+void xts_sink_set_session(uint64_t id, int pass, int passes);
 int xts_sink_is_open(void);
 uint64_t xts_sink_seq(void);                 /* records emitted (the last record's seq) */
 uint32_t xts_core_send(int type, const char *payload, uint32_t len);   /* counted xts_net_send; 0 = not queued */
@@ -178,10 +182,17 @@ typedef struct xts_run_opts {
   int dryrun;                     /* host dry run: also print the kernel/word statistics */
   int max_blocks;                 /* testing: stop after this many blocks (0 = all; END status "aborted") */
   const char *only_family;        /* testing */
+  int pass, passes;               /* multi-pass session: this run is pass `pass` (0-based) of `passes` (0 = single run) */
+  uint64_t session;               /* session id (the first pass's run nonce); 0 = this run's own nonce */
 } xts_run_opts_t;
 /* The run: HELLO, blocks, END. The transport must be up (xts_net_init). Returns 0 (2: dry run with bad words, -1 plan
- * failure, -5 messages could not be queued). */
+ * failure, -5 messages could not be queued). A pass after the first starts a new transport run (xts_net_new_run) and
+ * reuses the plan of the first pass, reseeded with SEED + pass. */
 int xts_run(const xts_profile_t *prof, const xts_run_opts_t *o);
+/* Every pass of a profile (prof->passes, or PASSES=<n> at build time), each a complete run; stops after a pass that did
+ * not finish (crash, hang, transport failure). Returns the last pass's xts_run result; *done = passes completed. */
+int xts_run_passes(const xts_profile_t *prof, const xts_run_opts_t *o, int *done);
+int xts_profile_pass_count(const xts_profile_t *prof);
 extern const char *xts_current_run_id;
 /* breadcrumb cadence for families that are not self/semantic (0 = only at the block start) */
 extern int xts_crumb_every_timing;

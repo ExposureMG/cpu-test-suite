@@ -234,6 +234,22 @@ int xts_net_drain(uint32_t timeout_us)
 
 void xts_net_stats(xts_net_stats_t *s) { if (s) { *s = st; s->last_seq = seq; } }
 
+uint64_t xts_net_new_run(void)
+{
+  flush_held();
+  uint64_t old = nonce;
+  do {
+    nonce = 0;
+    xts_net_run_nonce();
+  } while (nonce == old);
+  seq = msg = 0;
+  int link = st.link_up;
+  memset(&st, 0, sizeof st);
+  st.link_up = link;
+  ndropped = 0;
+  return nonce;
+}
+
 uint32_t xts_net_host_dropped(uint32_t *seqs, uint32_t max)
 {
   for (uint32_t i = 0; seqs && i < ndropped && i < max; i++) seqs[i] = dropped[i];

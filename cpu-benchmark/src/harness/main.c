@@ -8,15 +8,19 @@
  * characters or kernels left out), 4 = setup error.
  */
 #include <stddef.h>
+#include <stdio.h>
 
 #include "platform.h"
 #include "report.h"
 #include "runner.h"
 
-extern const bench_variant_info *const bench_variants[];
+/* variants.c: row s = the variant tables of the copies at layout shift s */
+extern const bench_variant_info *const bench_variants[][BENCH_MAX_VARIANTS];
 extern const int bench_nvariants;
+extern const int bench_shift_bytes[];
+extern const int bench_nshifts;
 
-static bench_results results; /* ~80 KB: keep it off the stack */
+static bench_results results; /* ~600 KB: keep it off the stack */
 
 int main(int argc, char **argv)
 {
@@ -35,7 +39,7 @@ int main(int argc, char **argv)
 
 	plat_status(PLAT_HEAD, "LibXenon CPU benchmark %s\n", BENCH_VERSION);
 	for (j = 0; j < bench_nvariants; j++) {
-		const bench_variant_info *v = bench_variants[j];
+		const bench_variant_info *v = bench_variants[0][j];
 
 		plat_status(j ? PLAT_VAR_B : PLAT_VAR_A, "  %s %-10s %s, cpu %s, cflags %s\n",
 			    bench_nvariants == 2 ? (j ? "B" : "A") : "=",
@@ -46,6 +50,14 @@ int main(int argc, char **argv)
 		    plat_cpu_desc());
 	plat_status(PLAT_TEXT, "  %d x %d ms samples per kernel and variant%s\n",
 		    opts.samples, opts.sample_ms, opts.quick ? " (quick)" : "");
+	if (bench_nshifts > 1) {
+		char b[64];
+		int len = 0;
+
+		for (j = 0; j < bench_nshifts && len < (int)sizeof(b); j++)
+			len += snprintf(b + len, sizeof(b) - (size_t)len, " +%d", bench_shift_bytes[j]);
+		plat_status(PLAT_TEXT, "  %d code layout shifts (bytes):%s\n", bench_nshifts, b);
+	}
 
 	arena = plat_arena();
 	if (!arena) {
@@ -54,8 +66,8 @@ int main(int argc, char **argv)
 		return plat_finish(4);
 	}
 
-	rc = bench_run_all(&results, bench_variants, bench_nvariants, &opts,
-			   report_progress, arena);
+	rc = bench_run_all(&results, bench_variants, bench_nvariants, bench_shift_bytes,
+			   bench_nshifts, &opts, report_progress, arena);
 	if (results.error)
 		plat_status(PLAT_BAD, "error: %s\n", results.error);
 	if (rc)

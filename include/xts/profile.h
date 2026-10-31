@@ -24,6 +24,13 @@
  *             sampled list (block_cases per block); case ids and seeds are unchanged.
  * The scheduler walks rows in order, each matching family in registry (name) order, the cartesian product of the
  * row's axis values in lexicographic order, then the family's cases in blocks of block_cases.
+ *
+ * Passes: XTS_PROFILE_PASSES(id, n, description, rows...) runs the whole profile n times in one boot, one after the
+ * other. Every pass is a complete run of its own (new run nonce, HELLO ... END, its own run directory on the PC); the
+ * rows without their own seed use base seed SEED + pass index, so random cases differ between passes while case ids
+ * stay the same (xts_merge.py / xts_schedmodel.py combine the passes like separate boots). HELLO and END carry
+ * "session": {"id", "pass", "passes"} so tools/xts_recv.py waits for every pass. `make PASSES=<n>` overrides the
+ * profile's count for any profile. A crash or hang stops the session (later passes do not run).
  */
 #ifndef XTS_PROFILE_H
 #define XTS_PROFILE_H
@@ -44,12 +51,14 @@ typedef struct xts_profile {
   const char *desc;
   const xts_profile_row_t *rows;
   int nrows;
+  int passes;                        /* runs per boot (0 or 1 = one) */
 } xts_profile_t;
 
-#define XTS_PROFILE(id, description, ...)                                                    \
+#define XTS_PROFILE_PASSES(id, npasses, description, ...)                                     \
   static const xts_profile_row_t xts_profile_rows_[] = { __VA_ARGS__ };                       \
   const xts_profile_t xts_profile = { #id, description, xts_profile_rows_,                   \
-                                      (int)(sizeof xts_profile_rows_ / sizeof xts_profile_rows_[0]) }
+                                      (int)(sizeof xts_profile_rows_ / sizeof xts_profile_rows_[0]), npasses }
+#define XTS_PROFILE(id, description, ...) XTS_PROFILE_PASSES(id, 1, description, __VA_ARGS__)
 
 /* the linked profile */
 extern const xts_profile_t xts_profile;

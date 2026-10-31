@@ -62,4 +62,9 @@ void xts_net_stats(xts_net_stats_t *s);
 
 /* The run nonce in every header (console: MAC + timebase at boot; host: pid + time). */
 uint64_t xts_net_run_nonce(void);
+
+/* Start the next run of a multi-pass session: wait until everything queued is sent, then a new nonce, frame and
+ * message numbering from 1 again, and xts_net_stats counting from zero. Call only between runs (after END). Returns
+ * the new nonce. */
+uint64_t xts_net_new_run(void);
 #endif

@@ -283,6 +283,36 @@ void xts_netc_mac(uint8_t m[6]) { memcpy(m, mac, 6); }
 int xts_netc_ready(void) { return q && q->ready; }
 uint64_t xts_net_run_nonce(void) { return nonce; }
 
+/* stats at the start of the current run (xts_net_new_run): xts_net_stats reports this run's share */
+static xts_net_stats_t base;
+
+static uint64_t make_nonce(void)
+{
+  uint64_t m48 = 0;
+  for (int i = 0; i < 6; i++) m48 = (m48 << 8) | mac[i];
+  uint64_t n = (m48 << 16) ^ xts_xc_tb();
+  return n ? n : 1;
+}
+
+uint64_t xts_net_new_run(void)
+{
+  if (!up) return nonce;
+  xts_net_drain(20u * 1000u * 1000u);                    /* the previous run's END is on the wire */
+  uint64_t n = make_nonce();
+  while (n == nonce) n = make_nonce();
+  xts_net_stats_t raw;
+  memset(&base, 0, sizeof base);
+  xts_net_stats(&raw);                                   /* totals so far */
+  base = raw;
+  nonce = n;
+  p_next_seq = 1;
+  p_next_msg = 1;
+  q->last_seq = 0;
+  q->sent_seq = 0;                                       /* the transmitter is idle: nothing queued after the drain */
+  sync_();
+  return nonce;
+}
+
 int xts_net_init(void)
 {
   if (up) return 0;
@@ -305,9 +335,7 @@ int xts_net_init(void)
     static const uint8_t dmac[6] = { 0x00, 0x22, 0x48, 0xFF, 0xFF, 0xFF };
     memcpy(mac, dmac, 6);
   }
-  uint64_t m48 = 0;
-  for (int i = 0; i < 6; i++) m48 = (m48 << 8) | mac[i];
-  nonce = (m48 << 16) ^ xts_xc_tb();
+  nonce = make_nonce();
   char line[160];
 #ifdef XTS_NET_DEST_IP
   {
@@ -510,6 +538,16 @@ void xts_net_stats(xts_net_stats_t *s)
   s->fence_wait_ticks = get64(&q->fence_ticks_hi, &q->fence_ticks_lo);
   s->wake_windows = q->wakes;
   s->link_up = (int)q->link_up;
+  s->messages -= base.messages;                          /* this run's share (all zero in the first run) */
+  s->ring_full_waits -= base.ring_full_waits;
+  s->frames -= base.frames;
+  s->frame_copies -= base.frame_copies;
+  s->bytes -= base.bytes;
+  s->send_failures -= base.send_failures;
+  s->tx_timeouts -= base.tx_timeouts;
+  s->fence_waits -= base.fence_waits;
+  s->fence_wait_ticks -= base.fence_wait_ticks;
+  s->wake_windows -= base.wake_windows;
 }
 
 /* ---- transmitter (PIR 4) ---- */
@@ -685,7 +723,7 @@ static int tx_one_message(void)
     return 1;
   }
   uint32_t type = e[1], len = e[2], msg = e[3], seq = e[4], frags = e[5];
-  if (type == XTS_PK_HELLO) run_live = 1;
+  if (type == XTS_PK_HELLO) run_live = 1, run_ended = 0;  /* a multi-pass session: every pass has HELLO ... END */
   if (type == XTS_PK_END) run_ended = 1;
   if (n < ENT_HDR || n > ENT_HDR + XTS_NET_MAX_MESSAGE + 8 || len > XTS_NET_MAX_MESSAGE ||
       frags != xts_netfmt_frag_count(len) || n > XTS_NET_RING_BYTES - pos) {

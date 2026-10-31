@@ -25,6 +25,18 @@
       present, and the harness's own memcpy comes from the linking
       toolchain's libc.
 
+  check_syms.py place --map <file.map> --align N --nm <xenon-nm> IMAGE.elf
+      Checks the code placement of the A/B image: every non-empty .text* and
+      .rodata* input section of a placed kernel object (build/placed/,
+      build/placed-s<S>/) or prefixed newlib object (lib_<id>.o,
+      lib_<id>_s<S>.o) starts on an N-byte boundary, and its code starts S
+      bytes past it (S = 0, or the layout shift the object was placed
+      with): the first function of a kernel's .text, and the first function
+      of every newlib member inside a prefixed object's .text (the first
+      function of each N-byte block, except blocks that continue the code
+      of a member which started in an earlier block).  N = 0 skips the
+      check (packed link).
+
   check_syms.py isa --objdump <testxenon3 xenon-objdump> IMAGE...
       Every word of the images' code must be an instruction the Xenon PPE
       implements.  testxenon3's "objdump -M xenon" decodes only the words in
@@ -247,6 +259,110 @@ def cmd_map(a):
     return 0
 
 
+def parse_input_sections(path):
+    """[(section, address, size, object)] of the memory map's input sections."""
+    res = []
+    pending = None
+    in_memmap = False
+    with open(path) as f:
+        for line in f:
+            if line.startswith("Linker script and memory map"):
+                in_memmap = True
+                continue
+            if not in_memmap:
+                continue
+            m = re.match(r"^ (\.\S+)\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)\s+(\S.*)$", line)
+            if m:
+                res.append((m.group(1), int(m.group(2), 16), int(m.group(3), 16),
+                            m.group(4).strip()))
+                pending = None
+                continue
+            m = re.match(r"^ (\.\S+)\s*$", line)
+            if m:
+                pending = m.group(1)  # long name; numbers on the next line
+                continue
+            m = re.match(r"^\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)\s+(\S.*)$", line)
+            if m and pending:
+                res.append((pending, int(m.group(1), 16), int(m.group(2), 16),
+                            m.group(3).strip()))
+            pending = None
+    return res
+
+
+PLACED_RE = re.compile(r"(?:^|/)placed(?:-s(\d+))?/")
+LIBOBJ_RE = re.compile(r"(?:^|/)lib_[a-z0-9]+?(?:_s(\d+))?\.o$")
+PLACED_SEC_RE = re.compile(r"^\.(text|rodata)(\..*)?$")
+MERGED_SEC_RE = re.compile(r"^\.rodata\.(cst|str)")
+
+
+def cmd_place(a):
+    if not a.align:
+        print("check_syms: place: PLACE_ALIGN=0 (packed link), nothing to check")
+        return 0
+    funcs = []  # (address, end), sorted
+    for line in run([a.nm, "-n", "-S", "--defined-only", a.image]).splitlines():
+        f = line.split()
+        if len(f) == 4 and f[2] in "tTwW":
+            x = int(f[0], 16)
+            funcs.append((x, x + int(f[1], 16)))
+        elif len(f) == 3 and f[1] in "tTwW":
+            x = int(f[0], 16)
+            funcs.append((x, x))
+    errs = []
+    stats = {}  # shift -> [sections, code blocks]
+    for name, addr, size, obj in parse_input_sections(a.map):
+        if not size or not PLACED_SEC_RE.match(name) or MERGED_SEC_RE.match(name):
+            continue
+        m = PLACED_RE.search(obj)
+        lib = not m
+        if lib:
+            m = LIBOBJ_RE.search(obj)
+        if not m:
+            continue
+        shift = int(m.group(1) or 0)
+        st = stats.setdefault(shift, [0, 0])
+        st[0] += 1
+        if addr % a.align:
+            errs.append("%s %s at 0x%x is not on a %d-byte boundary" %
+                        (obj, name, addr, a.align, ))
+            continue
+        if not name.startswith(".text"):
+            continue
+        inside = [f for f in funcs if addr <= f[0] < addr + size]
+        if not inside:
+            errs.append("%s %s at 0x%x: no function symbols" % (obj, name, addr))
+            continue
+        starts = [inside[0][0]]  # a kernel object: its section's first function
+        if lib:
+            # every newlib member starts on a block; a block whose first
+            # function continues the previous member's code (it runs into
+            # the block, or follows it within 64 bytes) is not a member start
+            reach = inside[0][1]
+            for (x, e), (px, pe) in zip(inside[1:], inside):
+                if (x - addr) // a.align != (px - addr) // a.align:
+                    blk0 = addr + (x - addr) // a.align * a.align
+                    if reach <= blk0 and x - max(reach, px) >= 64:
+                        starts.append(x)
+                reach = max(reach, e)
+        for x in starts:
+            st[1] += 1
+            if (x - addr) % a.align != shift:
+                errs.append("%s %s: code at 0x%x = boundary + %d, not + %d" %
+                            (obj, name, x, (x - addr) % a.align, shift))
+    for shift in sorted(stats):
+        print("check_syms: place: shift %d: %d sections on %d-byte boundaries, "
+              "%d kernels/newlib members start at boundary + %d" %
+              (shift, stats[shift][0], a.align, stats[shift][1], shift))
+    if not stats:
+        errs.append("no placed sections found in %s" % a.map)
+    for e in errs[:40]:
+        print("check_syms: place: " + e)
+    if errs:
+        return 1
+    print("check_syms: place ok")
+    return 0
+
+
 INSN_RE = re.compile(r"^\s*([0-9a-f]+):\t[0-9a-f ]+\t(\S+)\s*(.*)$")
 FUNC_RE = re.compile(r"^([0-9a-f]+) <(.*)>:$")
 # unconditional control transfers: nothing falls through to the next word
@@ -318,6 +434,11 @@ def main():
     m.add_argument("--expect-lib", default="memcpy",
                    help="routine that must exist for every variant")
     m.add_argument("variants", nargs="+", help="VARIANT:PREFIXED_LIB_OBJECT")
+    p = sub.add_parser("place")
+    p.add_argument("--map", required=True)
+    p.add_argument("--align", type=int, required=True)
+    p.add_argument("--nm", required=True)
+    p.add_argument("image")
     i = sub.add_parser("isa")
     i.add_argument("--objdump", required=True,
                    help="testxenon3's xenon-objdump (knows -M xenon)")
@@ -329,6 +450,8 @@ def main():
         return cmd_sizes(a)
     if a.cmd == "map":
         return cmd_map(a)
+    if a.cmd == "place":
+        return cmd_place(a)
     if a.cmd == "isa":
         return cmd_isa(a)
     ap.print_help()

@@ -23,6 +23,14 @@ END status "complete", 1 = otherwise, 2 = usage. Several consoles (run nonces) c
 
 --quarantine-out FILE appends a suggested quarantine.txt line for every CRASH/HANG report (the case the test core was
 running), unless the file already lists it. Rebuild the ELF afterwards (make), the case is then skipped.
+
+Multi-pass sessions (a profile with passes > 1, or make PASSES=<n>): every pass is a run of its own whose HELLO and END
+carry "session": {"id", "pass", "passes"}. The receiver files each pass as usual and keeps listening until every pass of
+the session has ended (even in the default one-run mode), then writes <out>/<console_tag>/session-<id>/session.json
+(per pass: run directory, verdict, status, records, seed; the session verdict) and merges the complete passes with
+tools/xts_merge.py into session-<id>/merged/ (--no-merge skips that). The session ends early when a pass reports a
+crash or hang (the console halted), or after --session-wait SEC (default 600) without a new pass. With --run-dir DIR,
+pass k goes to DIR/pass<k>/ and session.json to DIR. Exit status 0 needs every pass complete.
 Only the standard library is used.
 """
 import argparse
@@ -54,6 +62,7 @@ CSV_HEADER = "run_id,seq,family,case_id,mnem,word,cond,block,metric,value,unit,n
 CAP_MAGIC = b"XTSCAP1\n"
 FNV_INIT, FNV_PRIME = 0xcbf29ce484222325, 0x100000001b3
 LINGER = 1.0                                     # seconds to keep listening after a run's first END
+SESSION_WAIT = 600.0                             # default --session-wait: seconds without a new pass
 SO_RXQ_OVFL = getattr(socket, "SO_RXQ_OVFL", 40)  # Linux: datagrams the kernel dropped on this socket (full buffer)
 
 
@@ -226,6 +235,17 @@ class Run:
         h = self.hello or {}
         return str(h.get("run_id") or "%016x" % self.nonce)
 
+    def session(self):
+        """(id, pass, passes) of a multi-pass session, from HELLO (or END), else None"""
+        for src in (self.hello, self.end):
+            ss = (src or {}).get("session")
+            if isinstance(ss, dict) and ss.get("id") and isinstance(ss.get("passes"), int) and ss["passes"] > 1:
+                try:
+                    return str(ss["id"]), int(ss.get("pass") or 0), int(ss["passes"])
+                except (TypeError, ValueError):
+                    return None
+        return None
+
     def counts(self):
         c = Counter()
         for typ, _ in self.messages.values():
@@ -236,8 +256,10 @@ class Run:
         c = self.counts()
         plan = (self.hello or {}).get("plan") or {}
         gaps = self.max_seq - len(self.frames)
-        return ("[%s %s] %s blocks %d/%s rec %d log %d | frames %d dup %d crc %d gaps %d%s" % (
-            self.tag(), "%016x" % self.nonce, "HELLO" if self.hello else "no-HELLO", self.done_blocks,
+        ss = self.session()
+        return ("[%s %s%s] %s blocks %d/%s rec %d log %d | frames %d dup %d crc %d gaps %d%s" % (
+            self.tag(), "%016x" % self.nonce, (" pass %d/%d" % (ss[1], ss[2])) if ss else "",
+            "HELLO" if self.hello else "no-HELLO", self.done_blocks,
             plan.get("blocks", "?"), c["REC"], c["LOG"], len(self.frames), self.duplicates, self.crc_errors, gaps,
             (" | END " + str(self.end.get("status"))) if self.end else (" | " + self.last_block[:40])))
 
@@ -326,6 +348,7 @@ class Run:
             ("run_nonce", "%016x" % self.nonce), ("console_tag", self.tag()), ("run_id", self.run_id()),
             ("profile", (self.hello or {}).get("profile")), ("build_id", (self.hello or {}).get("build_id")),
             ("seed", (self.hello or {}).get("seed", 1)),
+            ("session", (self.hello or {}).get("session") or end.get("session")),
             ("hello_seen", self.hello is not None), ("hello_messages", self.hello_msgs), ("end_seen", self.end is not None),
             ("last_seq", last_seq), ("max_seq_seen", self.max_seq),
             ("frames_received", self.received), ("frames_unique", len(self.frames)), ("duplicates", self.duplicates),
@@ -384,8 +407,10 @@ class Run:
         self.reports = reports
         self.dir = d
         self.receive = rcv
-        verdict = "%s: run %s (%s, profile %s): %s, END status %s | records %d, frames %d unique, %d missing, %d dup, " \
+        ss = self.session()
+        verdict = "%s: run %s (%s, profile %s%s): %s, END status %s | records %d, frames %d unique, %d missing, %d dup, " \
                   "%d crc errors -> %s" % ("xts_recv", run_id, self.tag(), profile or "?",
+                                           (", pass %d/%d" % (ss[1], ss[2])) if ss else "",
                                            "COMPLETE" if complete else "INCOMPLETE (" + "; ".join(reasons) + ")",
                                            status, len(records), len(self.frames), len(missing), self.duplicates,
                                            self.crc_errors + extra_crc, d)
@@ -453,6 +478,7 @@ class Receiver:
         self.last_progress = 0
         self.timed = True           # False for --replay: arrival times are not real
         self.kernel_drops = None    # SO_RXQ_OVFL counter of the socket (None: not available)
+        self.sessions = OrderedDict()   # session id -> Session (multi-pass profiles)
 
     def datagram(self, data, now):
         if len(data) < 36 or data[:4] != MAGIC:
@@ -493,17 +519,26 @@ class Receiver:
                 continue
             if force or (run.end_time is not None and now - run.end_time >= LINGER) or \
                     (idle and now - run.last >= idle):
-                self.finish(run)
+                self.finish(run, now)
 
-    def finish(self, run):
+    def finish(self, run, now=None):
         if not self.a.quiet:
             sys.stderr.write("\n")
         extra = self.unattributed_crc
         self.unattributed_crc = 0
         if self.kernel_drops is not None and getattr(run, "kdrops0", None) is not None:
             run.kernel_drops = self.kernel_drops - run.kdrops0
-        ok = run.finalize(self.a.out, self.a.run_dir, extra, self.a.quiet)
+        ss = None if getattr(self, "single", False) else run.session()
+        run_dir = self.a.run_dir
+        if ss and run_dir:
+            run_dir = os.path.join(run_dir, "pass%d" % ss[1])
+        ok = run.finalize(self.a.out, run_dir, extra, self.a.quiet)
         self.results.append((run.nonce, ok))
+        if ss:
+            sess = self.sessions.get(ss[0])
+            if sess is None:
+                sess = self.sessions[ss[0]] = Session(ss[0], ss[2], run.tag())
+            sess.add(ss[1], run, ok, now if now is not None else time.time())
         lines = run.quarantine_lines()
         if lines:
             print("suggested quarantine.txt line(s):")
@@ -527,6 +562,25 @@ class Receiver:
     def all_done(self):
         return bool(self.runs) and all(r.finalized for r in self.runs.values())
 
+    def sessions_due(self, now, force=False):
+        """end the sessions that have every pass, stopped (crash/hang), or waited too long for the next pass"""
+        wait = getattr(self.a, "session_wait", SESSION_WAIT)
+        unattributed = any(not r.finalized and r.session() is None for r in self.runs.values())
+        for sess in self.sessions.values():
+            if sess.done:
+                continue
+            live = any(not r.finalized and (r.session() or ("",))[0] == sess.id for r in self.runs.values())
+            why = sess.finished()
+            if why is None and not live and not unattributed and wait and now - sess.last >= wait:
+                why = "no new pass for %d s" % wait
+            if why is None and force:
+                why = "receiver stopped"
+            if why is not None:
+                sess.close(self.a, why)
+
+    def sessions_settled(self):
+        return all(sess.done for sess in self.sessions.values())
+
     def show_progress(self, now):
         if self.a.quiet or now - self.last_progress < (0.5 if sys.stderr.isatty() else 10):
             return
@@ -544,7 +598,93 @@ class Receiver:
     def exit_code(self):
         if not self.results:
             return 1
+        if any(not sess.ok for sess in self.sessions.values()):
+            return 1
         return 0 if all(ok for _, ok in self.results) else 1
+
+
+# ------------------------------------------------------------------------------------------------ multi-pass session
+class Session:
+    """the passes of one multi-pass boot (HELLO/END "session": {"id", "pass", "passes"})"""
+
+    def __init__(self, sid, passes, tag):
+        self.id, self.passes, self.tag = sid, passes, tag
+        self.pass_runs = {}           # pass (1-based) -> (Run, ok)
+        self.last = 0.0
+        self.done = self.ok = False
+        self.dir = None
+
+    def add(self, k, run, ok, now):
+        self.pass_runs[k] = (run, ok)
+        self.last = now
+
+    def finished(self):
+        """why the session is over (every pass, or a pass that halted the console), or None"""
+        if all(k in self.pass_runs for k in range(1, self.passes + 1)):
+            return "all %d passes received" % self.passes
+        for k, (run, ok) in sorted(self.pass_runs.items()):
+            st = (run.end or {}).get("status")
+            if st in ("crashed", "hang"):
+                return "pass %d ended with status %s: the console halted" % (k, st)
+        return None
+
+    def close(self, a, why):
+        self.done = True
+        got = sorted(self.pass_runs)
+        complete = [k for k in got if self.pass_runs[k][1]]
+        self.ok = len(complete) == self.passes
+        base = a.run_dir if getattr(a, "run_dir", None) else os.path.join(a.out, self.tag, "session-%s" % self.id)
+        os.makedirs(base, exist_ok=True)
+        self.dir = base
+        passes = []
+        for k in range(1, self.passes + 1):
+            if k not in self.pass_runs:
+                passes.append(OrderedDict([("pass", k), ("received", False)]))
+                continue
+            run, ok = self.pass_runs[k]
+            rcv = getattr(run, "receive", {}) or {}
+            passes.append(OrderedDict([
+                ("pass", k), ("received", True), ("run_id", run.run_id()), ("dir", getattr(run, "dir", None)),
+                ("complete", rcv.get("complete")), ("status", rcv.get("status")), ("ok", ok),
+                ("records", rcv.get("records")), ("seed", rcv.get("seed")), ("missing_frames", rcv.get("missing_frames")),
+                ("duration_s", rcv.get("duration_s")), ("reasons", rcv.get("reasons"))]))
+        merged = None
+        if complete and not getattr(a, "no_merge", False):
+            merged = self.merge(base, [self.pass_runs[k][0] for k in complete])
+        first = self.pass_runs[got[0]][0] if got else None
+        obj = OrderedDict([
+            ("session", self.id), ("console_tag", self.tag),
+            ("profile", ((first.hello or {}).get("profile")) if first else None),
+            ("build_id", ((first.hello or {}).get("build_id")) if first else None),
+            ("passes", self.passes), ("received", len(got)), ("complete", len(complete)), ("ok", self.ok),
+            ("ended_because", why), ("pass_runs", passes), ("merged", merged),
+            ("next", "python3 tools/xts_schedmodel.py %s -o model/" % " ".join(
+                p["dir"] for p in passes if p.get("ok") and p.get("dir")) if complete else None),
+            ("receiver", "tools/xts_recv.py (protocol %d)" % VERSION)])
+        tmp = os.path.join(base, "session.json.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(obj, indent=1) + "\n")
+        os.replace(tmp, os.path.join(base, "session.json"))
+        print("xts_recv: session %s (%s, %s passes): %d received, %d complete -> %s (%s)%s" % (
+            self.id, self.tag, self.passes, len(got), len(complete), "COMPLETE" if self.ok else "INCOMPLETE", why,
+            (" | merged -> %s" % merged["dir"]) if merged and merged.get("dir") else ""), flush=True)
+        print("  session summary: %s" % os.path.join(base, "session.json"), flush=True)
+
+    def merge(self, base, runs):
+        tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xts_merge.py")
+        out = os.path.join(base, "merged")
+        if not os.path.exists(tool):
+            return OrderedDict([("dir", None), ("error", "tools/xts_merge.py not found")])
+        cmd = [sys.executable, "-B", tool] + [r.dir for r in runs] + ["-o", out]
+        if any(((r.hello or {}).get("sysinfo") or {}).get("platform") == "host" or r.tag() == "host" for r in runs):
+            cmd.append("--allow-host")
+        try:
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=1800)
+        except (OSError, subprocess.SubprocessError) as e:
+            return OrderedDict([("dir", None), ("error", str(e))])
+        tail = p.stdout.decode("utf-8", "replace").strip().splitlines()[-3:]
+        return OrderedDict([("dir", out if p.returncode in (0, 2) else None), ("exit", p.returncode),
+                            ("runs", len(runs)), ("output_tail", tail)])
 
 
 def open_socket(bind, port):
@@ -616,8 +756,9 @@ def serve(a, sock, rx, child=None):
             if child_exit is not None:
                 idle = min(idle or 2.0, 2.0)
             rx.due(now, idle=idle)
+            rx.sessions_due(now)
             rx.show_progress(now)
-            if a.once and rx.all_done():
+            if a.once and rx.all_done() and rx.sessions_settled():
                 break
             if child_exit is not None and (rx.all_done() or not rx.runs) and now - child_exit > 2.0:
                 break
@@ -625,6 +766,7 @@ def serve(a, sock, rx, child=None):
         for sig, h in old.items():
             signal.signal(sig, h)
     rx.due(time.time(), force=True)
+    rx.sessions_due(time.time(), force=True)
 
 
 def run_exec(a):
@@ -644,6 +786,7 @@ def run_exec(a):
 def replay(a, path):
     rx = Receiver(a)
     rx.timed = False
+    rx.single = True                # one pass replayed: its own directory, no session summary
     with open(path, "rb") as f:
         data = f.read()
     if not data.startswith(CAP_MAGIC):
@@ -659,12 +802,16 @@ def replay(a, path):
 
 
 # ------------------------------------------------------------------------------------------------ selftest
-def _synthetic_run(nonce, nrec=40, big=(5, 17), crash=False, copies=1):
-    """the messages of a small run and its datagrams: (expected record lines, log lines, [(seq, [copies])])"""
+def _synthetic_run(nonce, nrec=40, big=(5, 17), crash=False, copies=1, session=None):
+    """the messages of a small run and its datagrams: (expected record lines, log lines, [(seq, [copies])]);
+    session = (id, pass, passes) for a pass of a multi-pass session"""
     msgs, recs, logs = [], [], []
-    hello = json.dumps({"sysinfo": {"suite": "xts", "console_tag": "selftest", "run_id": "%016x" % nonce},
-                        "profile": "selftest", "plan": {"blocks": 2, "cases": nrec}, "cores": {"test": 0},
-                        "build_id": "b", "run_id": "%016x" % nonce, "console_tag": "selftest"}).encode()
+    hobj = {"sysinfo": {"suite": "xts", "console_tag": "selftest", "run_id": "%016x" % nonce},
+            "profile": "selftest", "plan": {"blocks": 2, "cases": nrec}, "cores": {"test": 0},
+            "build_id": "b", "run_id": "%016x" % nonce, "console_tag": "selftest"}
+    if session:
+        hobj["session"] = {"id": session[0], "pass": session[1], "passes": session[2]}
+    hello = json.dumps(hobj).encode()
     msgs += [(1, hello)] * 3
     h = FNV_INIT
     for i in range(nrec):
@@ -702,8 +849,11 @@ def _synthetic_run(nonce, nrec=40, big=(5, 17), crash=False, copies=1):
         frames += fr
         seq += len(fr)
     last_seq = seq - 1
-    end = json.dumps({"status": status, "last_seq": last_seq, "messages": dict(counts), "rec_hash": "%016x" % h,
-                      "send_failures": 0}).encode()
+    eobj = {"status": status, "last_seq": last_seq, "messages": dict(counts), "rec_hash": "%016x" % h,
+            "send_failures": 0}
+    if session:
+        eobj["session"] = hobj["session"]
+    end = json.dumps(eobj).encode()
     for k in range(3):
         fr = encode_message(nonce, seq, len(msgs) + 1 + k, 8, end, copies)
         frames += fr
@@ -859,10 +1009,72 @@ def selftest():
     check(len(rx.runs) == 2 and all(rr.receive["complete"] for rr in rx.runs.values()), "socket: two complete runs")
     check(not sys.platform.startswith("linux") or all(rr.receive["kernel_drops"] == 0 for rr in rx.runs.values()),
           "socket: kernel drop counter read (0)")
+    # 7. multi-pass session: 3 passes -> 3 run dirs, session.json, merge attempted; the receiver in one-run mode
+    #    keeps listening between passes (over a real socket, the passes 1.5 s apart)
+    sid = "00000000000a0001"
+    passes = [_synthetic_run(0xA0001 + k, nrec=12, big=(), session=(sid, k + 1, 3)) for k in range(3)]
+    a7 = argparse.Namespace(out=os.path.join(tmp, "sess"), run_dir=None, quiet=True, quarantine_out=None, once=True,
+                            timeout=0, port=0, bind="127.0.0.1", session_wait=30, no_merge=False)
+    sock = open_socket("127.0.0.1", 0)
+    port = sock.getsockname()[1]
+
+    def send_passes():
+        tx7 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        for k, pr in enumerate(passes):
+            if k:
+                time.sleep(1.5)               # longer than LINGER: pass k is finalized before pass k+1 starts
+            for _, cs in pr[2]:
+                for c in cs:
+                    tx7.sendto(c, ("127.0.0.1", port))
+    import threading
+    th = threading.Thread(target=send_passes)
+    th.start()
+    rx = Receiver(a7)
+    with contextlib.redirect_stdout(io.StringIO()):
+        serve(a7, sock, rx)
+    th.join()
+    sj = os.path.join(tmp, "sess", "selftest", "session-" + sid, "session.json")
+    check(len(rx.runs) == 3 and all(rr.receive["complete"] for rr in rx.runs.values()), "session: 3 complete passes")
+    check(os.path.exists(sj), "session: session.json written")
+    if os.path.exists(sj):
+        so = json.load(open(sj))
+        check(so["ok"] and so["received"] == 3 and [p["pass"] for p in so["pass_runs"]] == [1, 2, 3]
+              and so["merged"] is not None, "session: session.json content %s" % so.get("ended_because"))
+    check(rx.exit_code() == 0, "session: exit code 0")
+    # 7b. a pass never arrives: the session ends after --session-wait, INCOMPLETE, exit code 1
+    a7b = argparse.Namespace(out=os.path.join(tmp, "sess2"), run_dir=None, quiet=True, quarantine_out=None, once=True,
+                             timeout=0, session_wait=5, no_merge=True)
+    rx = Receiver(a7b)
+    t = 2000.0
+    with contextlib.redirect_stdout(io.StringIO()):
+        for pr in passes[:2]:
+            for _, cs in pr[2]:
+                for c in cs:
+                    rx.datagram(c, t)
+            t += 2.0
+            rx.due(t)
+            rx.sessions_due(t)
+        settled_early = rx.sessions_settled()
+        rx.sessions_due(t + 6.0)
+    check(not settled_early and rx.sessions_settled(), "session: waits, then ends after --session-wait")
+    check(rx.exit_code() == 1, "session: missing pass -> exit code 1")
+    # 7c. --run-dir: pass k in DIR/pass<k>, session.json in DIR; a crashed pass ends the session at once
+    crashed = _synthetic_run(0xB0001, nrec=12, big=(), crash=True, session=("00000000000b0001", 1, 3))
+    a7c = argparse.Namespace(out=os.path.join(tmp, "x"), run_dir=os.path.join(tmp, "rd"), quiet=True,
+                             quarantine_out=None, once=True, timeout=0, session_wait=600, no_merge=True)
+    rx = Receiver(a7c)
+    with contextlib.redirect_stdout(io.StringIO()):
+        for _, cs in crashed[2]:
+            for c in cs:
+                rx.datagram(c, 3000.0)
+        rx.due(3002.0)
+        rx.sessions_due(3002.0)
+    check(rx.sessions_settled() and os.path.exists(os.path.join(tmp, "rd", "pass1", "results.jsonl"))
+          and os.path.exists(os.path.join(tmp, "rd", "session.json")), "session: --run-dir layout, crash ends it")
     if fails:
         print("xts_recv selftest: FAIL\n  " + "\n  ".join(fails))
         return 1
-    print("xts_recv selftest: PASS (clean, replay, dup/reorder/corrupt, loss + context, no END, crash + quarantine, 2 runs over a socket)")
+    print("xts_recv selftest: PASS (clean, replay, dup/reorder/corrupt, loss + context, no END, crash + quarantine, 2 runs over a socket, multi-pass sessions)")
     import shutil
     shutil.rmtree(tmp, ignore_errors=True)
     return 0
@@ -880,6 +1092,9 @@ def main():
     ap.add_argument("--run-dir", help="write the (single) run into exactly this directory")
     ap.add_argument("--port-file", help="write the bound port number into this file once listening")
     ap.add_argument("--timeout", type=float, default=0, help="finish a run after SEC seconds without frames (0 = never)")
+    ap.add_argument("--session-wait", type=float, default=SESSION_WAIT,
+                    help="multi-pass session: end it after SEC seconds without a new pass (default %d)" % SESSION_WAIT)
+    ap.add_argument("--no-merge", action="store_true", help="multi-pass session: do not run xts_merge.py on the passes")
     ap.add_argument("--quarantine-out", help="append suggested quarantine.txt lines for CRASH/HANG reports to this file")
     ap.add_argument("--quiet", action="store_true", help="no progress line; only the verdict of incomplete runs")
     ap.add_argument("--replay", help="rebuild a run directory from a capture.bin")

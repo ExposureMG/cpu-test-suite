@@ -1,6 +1,12 @@
 /*
  * runner.h - runs every kernel of one or two variants and keeps the
  * statistics (DESIGN.md section 1).  Portable: uses only platform.h.
+ *
+ * Layout shifts: an image may link every kernel once per code-placement
+ * shift (make SHIFTS=...).  Then each kernel is measured at every shift (A
+ * and B at the same shift back to back) and its speedup is the median of
+ * the per-shift speedups; the spread across shifts tells layout effects
+ * from code generation.  With one shift everything is as before.
  */
 #ifndef BENCH_RUNNER_H
 #define BENCH_RUNNER_H
@@ -18,7 +24,15 @@
 #define BENCH_SAMPLE_MS 60 /* target length of one sample  */
 #endif
 
+/* Layout shifts: a kernel whose speedups across the shifts spread by more
+ * than max(BENCH_LAYOUT_PCT, 2 x its noise) percent, or lie on both sides
+ * of 1.0 by more than half that, is reported as layout-sensitive. */
+#ifndef BENCH_LAYOUT_PCT
+#define BENCH_LAYOUT_PCT 1.0
+#endif
+
 #define BENCH_MAX_VARIANTS 2
+#define BENCH_MAX_SHIFTS 8
 #define BENCH_MAX_SAMPLES 31
 #define BENCH_MAX_KERNELS 128
 #define BENCH_GUARD_BYTES PLAT_GUARD_BYTES
@@ -52,16 +66,30 @@ typedef struct bench_vres {
 	uint32_t calls;                   /* run() calls in total        */
 } bench_vres;
 
+/* Per kernel.  [s][j] = shift s (index into bench_results.shift), variant
+ * j (0 = A, 1 = B).  Shift index 0 is the first shift of the image, the
+ * only one without SHIFTS.  The results of every shift must equal those of
+ * shift 0 bit for bit (same code, same input): v[s][j].ref is shift 0's,
+ * and a copy that returns anything else counts as UNSTABLE. */
 typedef struct bench_kres {
 	const bench_kernel *k;                     /* variant A's descriptor  */
-	const bench_kernel *kv[BENCH_MAX_VARIANTS];
-	bench_vres v[BENCH_MAX_VARIANTS];
+	const bench_kernel *kv[BENCH_MAX_SHIFTS][BENCH_MAX_VARIANTS];
+	bench_vres v[BENCH_MAX_SHIFTS][BENCH_MAX_VARIANTS];
 	uint32_t status;   /* BST_* bits                                     */
 	const char *note;  /* why BST_BADDESC was set                        */
 	int index;         /* position in the variant tables                */
-	uint32_t reps;     /* run() calls per sample (same for A and B)      */
-	int samples;       /* samples per variant                           */
-	double speedup;    /* time B / time A (two variants)                */
+	uint32_t reps;     /* run() calls per sample (same for A, B, shifts) */
+	int samples;       /* samples per variant and shift                 */
+	double sspeed[BENCH_MAX_SHIFTS]; /* time B / time A at each shift    */
+	double speedup;    /* median of sspeed[] (= sspeed[0] with 1 shift)  */
+	double sp_min, sp_max; /* lowest and highest of sspeed[]             */
+	double spread_pct; /* (sp_max / sp_min - 1) x 100                    */
+	double tshow[BENCH_MAX_VARIANTS]; /* ticks/run shown: median over the
+					   * shifts of each shift's min       */
+	double noise_pct;  /* max (median-min)/min over shifts and variants  */
+	double band_pct;   /* max(BENCH_LAYOUT_PCT, 2 x noise_pct)           */
+	int flip;          /* speedups below and above 1 by > band_pct / 2   */
+	int layout;        /* layout-sensitive: flip or spread_pct > band_pct */
 	double rel_diff;   /* |A-B| / max(|A|,|B|) of the reference results */
 	int ref;           /* REF_*                                          */
 	double ref_value;  /* the reference result (REF_CHECKED)             */
@@ -70,7 +98,9 @@ typedef struct bench_kres {
 
 typedef struct bench_results {
 	int nvar;
-	const bench_variant_info *var[BENCH_MAX_VARIANTS];
+	const bench_variant_info *var[BENCH_MAX_VARIANTS]; /* first shift's  */
+	int nshift;                   /* code-placement shifts measured      */
+	int shift[BENCH_MAX_SHIFTS];  /* their offsets in bytes              */
 	int ntable;         /* kernels in variant A's table                  */
 	int nk;             /* kernels run (after --only)                    */
 	bench_kres k[BENCH_MAX_KERNELS];
@@ -86,14 +116,20 @@ typedef struct bench_results {
 	int ngeo[BENCH_CAT_COUNT];
 	double geo_all;
 	int ngeo_all;
+	/* layout shifts: geomean at each shift over the same kernels, and the
+	 * number of passed kernels that are layout-sensitive / flip */
+	double geo_shift[BENCH_MAX_SHIFTS];
+	int nlayout, nflip;
 } bench_results;
 
 /* Runs the kernels; returns 0, or -1 on a fatal setup problem (r->error;
  * a non-fatal table problem also sets r->error but returns 0).
- * progress(r, i, 0) is called before kernel r->k[i] starts and
- * progress(r, i, 1) after it finished; it may be NULL. */
-int bench_run_all(bench_results *r, const bench_variant_info *const *vars,
-		  int nvar, const bench_opts *o,
+ * vars[s][j] is variant j's table of the copies at shift s (shifts[s]
+ * bytes), for s < nshift.  progress(r, i, 0) is called before kernel r->k[i]
+ * starts and progress(r, i, 1) after it finished; it may be NULL. */
+int bench_run_all(bench_results *r,
+		  const bench_variant_info *const (*vars)[BENCH_MAX_VARIANTS], int nvar,
+		  const int *shifts, int nshift, const bench_opts *o,
 		  void (*progress)(const bench_results *r, int i, int phase),
 		  void *arena);
 

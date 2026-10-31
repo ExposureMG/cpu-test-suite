@@ -66,6 +66,22 @@ boot-to-boot and thermal variation from the comparison.
   4K-entry branch history table; `tools/place.py`).  Identical code then gets
   identical cache sets, branch-history entries and fetch alignment in A and
   B; only each compiler's own layout inside its object differs.
+* **Layout shifts (`make SHIFTS="0 4 8 12"`, default `0`).**  Identical
+  placement is still one placement, which may favour one compiler's code by
+  accident (the first console runs showed 3-5 % in branchy kernels that
+  loop alignment did not explain).  With several shifts the A/B image (and
+  the host build) links every kernel object and newlib member once per
+  shift, its code starting `shift` bytes past its boundary for A and B
+  alike (`tools/place.py --shift`: no-op padding in front of each `.text*`
+  section, symbols and relocations moved with it; `.rodata*` stays on the
+  boundary).  The copy at shift S gets the symbol namespace `<id>_sS_`
+  (`place.py --rename`, `libprefix.py --prefix <id>_sS_lib_ --shift S`);
+  the shift-0 copy keeps today's names, so the default image is unchanged.
+  `src/harness/variants.c` exports one row of variant tables per shift
+  (`-DBENCH_SHIFT_LIST`), and `check_syms.py place` verifies the placement
+  in the link map.  Shifts are multiples of 4 below `PLACE_ALIGN`, at most
+  8 (`BENCH_MAX_SHIFTS`); each one adds about 3.9 MB to the image, which
+  must stay below XeLL's 32 MiB ELF limit (`check-ab` checks it).
 
 **Timing.**  The timebase (`mftb`, 49.875 MHz = 3.2 GHz / 64) is read with the
 `mftbu`/`mftbl`/`mftbu` retry loop.  libxenon runs with MSR[EE]=0 (no
@@ -98,6 +114,27 @@ Per kernel:
    byte-order-dependent one (bswap) is not checked on a little-endian host.
    Failed kernels are excluded from the geomeans and shown in red.
 7. Geometric mean of speedups per category and overall.
+
+With layout shifts (`r->nshift` > 1) steps 1 and 3 run once per kernel
+(init by A at the first shift, `reps` calibrated with A at the first
+shift).  Step 2 runs every copy; each must return the first shift's result
+of its variant bit for bit (same code, same input), else **UNSTABLE**.  In
+step 4 every sample goes round the shifts, A and B of one shift back to
+back in the sample's order (AB or BA), so each shift's samples cover the
+same stretch of time.  Step 5 is done per shift and variant; the speedup at
+shift s is `time_B[s] / time_A[s]`, and the kernel's **speedup is the
+median over the shifts** (the mean of the two middle values for an even
+count); the times shown are the medians over the shifts of each shift's
+`time`.  **spread** = max / min - 1 of the per-shift speedups; **noise** is
+the largest noise of any copy; the noise band is
+max(`BENCH_LAYOUT_PCT` (1 %), 2 x noise), because a speedup is the ratio of
+two times that each scatter by up to the noise.  A kernel is
+**layout-sensitive** when its spread exceeds the band or when it **flips**
+(a per-shift speedup above 1 + band/2 and another below 1 - band/2).
+Layout sensitivity is information, not a failure: the kernel stays in the
+geomeans with its median.  Step 7 uses the medians and also gives the
+geomean at each shift over the same kernels.  The step 6 checks use
+the first shift's results (all shifts' results are equal or UNSTABLE).
 
 ## 2. Layout and ownership
 
@@ -307,11 +344,18 @@ measure each libm as shipped, wrappers included.
 that the tables have equal length and names.
 
 **Runner** (`runner.c`, portable): implements section 1.  Compile-time knobs:
-`BENCH_SAMPLES` (7), `BENCH_SAMPLE_MS` (60).  The host binary also accepts `--quick`,
+`BENCH_SAMPLES` (7), `BENCH_SAMPLE_MS` (60), `BENCH_LAYOUT_PCT` (1.0, the
+floor of the layout-sensitivity band).  `bench_run_all` takes the variant
+tables as rows of shifts (`vars[s][j]`) and their offsets; results are kept
+per shift and variant (`bench_kres.v[s][j]`, `sspeed[s]`) plus the
+per-kernel median, spread and verdict.  The host binary also accepts `--quick`,
 `--only <id>`, `--cols N --rows N`.  Progress goes to the scrolling console, one
 line per kernel, for example
 `[ 7/33] bsearch  BR   A  812.3 us  B  905.1 us  1.114x  ok`.
-The total run should take about a minute or less.
+The total run should take about a minute or less; each extra layout shift
+adds about 28 s (33 kernels x 7 samples x 60 ms x 2 variants).  With
+shifts the progress line shows the median speedup, the spread and the
+layout marker.
 
 **Report** (`report.c`, portable): the final screen is drawn after a clear,
 with the platform's `screen_put(col, row, color, text)` (clipped, no wrapping, no
@@ -336,10 +380,24 @@ informative layout that fits:
   first: MISSING, BADDESC, NOTIMER, OVERRUN, UNSTABLE, WRONG A/B/AB (WRONG in
   single images), MISMATCH.
 * Single-variant images: µs/run, cycles/unit, Munits/s, result (hex for EXACT).
+* Layout shifts: the speedup is the median over the shifts, A/B µs and
+  cyc/u are the medians of each shift's time; a `*` after the speedup marks
+  a layout-sensitive kernel (`!` a flip).  wide adds one speedup column per
+  shift (or one `min-max` column when they do not fit) and a `spread`
+  column (yellow when layout-sensitive), ahead of the description and the
+  bar; compact and minimal add the marker; the header names the shifts and
+  the footer adds the geomean at each shift and the layout-sensitive count.
 
 After drawing the screen, dump everything to serial only, one CSV line per
 kernel per variant with all statistics and results (`plat_log`), so users with
-a serial cable get machine-readable data.
+a serial cable get machine-readable data.  With layout shifts (and only
+then) the log adds a `shifts` line, a trailing `shift` field to the `kernel`
+lines (one line per kernel, shift and variant; every old field keeps its
+meaning for that copy, `speedup` being that shift's), one `layout` line per
+kernel (median, min, max, spread, noise, band, flip, sensitive, the times
+shown and the per-shift speedups) and `geomean_shift` lines; the `geomean`
+lines keep their format and hold the geomeans of the medians (README,
+"Serial log").
 
 **Platform API** (`platform.h`; `platform_xenon.c`, `platform_host.c`):
 `plat_init` (Xenon: `xenos_init(VIDEO_MODE_AUTO)`, `console_init()`,
@@ -361,7 +419,8 @@ were clipped or any kernel failed.
 ## 7. Build (infra)
 
 `Makefile` variables `X3`, `O16` (toolchain roots, defaults in the table above),
-`OPT` (default `-O2`, applied to kernels of both variants), `MACHDEP`.
+`OPT` (default `-O2`, applied to kernels of both variants), `MACHDEP`,
+`PLACE_ALIGN`, `SHIFTS` (layout shifts, section 1).
 Kernel/table objects are built per variant with that variant's `xenon-gcc`,
 `-std=gnu11 $(MACHDEP) $(OPT) -Wall -Wextra -DBENCH_VARIANT=<id>
 -DBENCH_LABEL='"<label>"' -DBENCH_CFLAGS='"$(OPT)"' -Iinclude` into
@@ -370,7 +429,12 @@ Kernel/table objects are built per variant with that variant's `xenon-gcc`,
 link copies of the kernel objects whose non-empty `.text`/`.rodata` sections
 are aligned to `PLACE_ALIGN` (default 16384; `tools/place.py` patches
 `sh_addralign`, `build/placed/`), and `libprefix.py --align` does the same for
-every newlib member (section 1, code placement).  Link like devkitxenon's `rules`:
+every newlib member (section 1, code placement).  With `SHIFTS`, the copy of
+every kernel object at shift S is `build/placed-sS/...` (`place.py --align
+--shift S --rename <id>_=<id>_sS_`) and of every newlib object
+`build/<id>/lib_<id>_sS.o`; the A/B image, `build/host/bench-host` and the
+ASan build link all of them (the single-toolchain images only shift 0).
+Link like devkitxenon's `rules`:
 `$(CC) $^ $(MACHDEP) -Wl,--gc-sections -Wl,-Map,<map> -L$(TC)/xenon/lib/32
 -L$(TC)/usr/lib -lxenon -lm -n -T $(TC)/app.lds -o x.elf`, then
 `objcopy -O elf32-powerpc --adjust-vma 0x80000000 x.elf x.elf32 && strip x.elf32`.
@@ -378,7 +442,9 @@ every newlib member (section 1, code placement).  Link like devkitxenon's `rules
 Targets: `all` (= `ab single`), `ab` → `build/bench-ab.elf32`, `single` →
 `build/bench-xenon3.elf32 build/bench-old16.elf32`, `host`, `check` (host ASan
 run + host quick runs at 148x41 and 74x27 + `check_syms.py` over every
-cross-compiled kernel object + the A/B link map + a Xenon instruction-set scan
+cross-compiled kernel object + the A/B link map and code placement
+(`check_syms.py place`: every kernel's and newlib member's code at its
+boundary + shift, its tables on the boundary) + a Xenon instruction-set scan
 of the images + `refs.h` current and every host result matching it), `refs`
 (`qemu-check`, then `tools/mkrefs.py` records the big-endian results in
 `src/harness/refs.h`), `asm` (per-kernel `.s` for both variants in

@@ -5,10 +5,12 @@
 #include <string.h>
 #include "core.h"
 
-/* SEED=<n> (make): base seed of every row that does not set its own, so repeated runs draw new random cases */
+/* SEED=<n> (make): base seed of every row that does not set its own, so repeated runs draw new random cases. A
+ * multi-pass profile runs pass k with base seed SEED + k (xts_set_run_seed, xts_plan_reseed). */
 #ifndef XTS_RUN_SEED
 #define XTS_RUN_SEED 1
 #endif
+static uint64_t run_seed = XTS_RUN_SEED;
 
 typedef struct { int axis; int nv; uint8_t v[XTS_MAX_AXIS_VALUES]; } axsel_t;
 
@@ -132,7 +134,7 @@ int xts_plan_build(xts_plan_t *p, const xts_profile_t *prof)
         b.row = ri;
         b.fam = fi;
         b.repeats = row->repeats > 0 ? row->repeats : 1;
-        b.seed = row->seed ? row->seed : XTS_RUN_SEED;
+        b.seed = row->seed ? row->seed : run_seed;
         for (int u = 0; u < nu; u++) {
           b.value[use[u].axis] = use[u].v[idx[u]];
           b.applied |= 1u << use[u].axis;
@@ -172,7 +174,7 @@ int xts_plan_build(xts_plan_t *p, const xts_profile_t *prof)
         b.stride = 1;
         b.finish = 1;
         b.repeats = 1;
-        b.seed = row->seed ? row->seed : XTS_RUN_SEED;
+        b.seed = row->seed ? row->seed : run_seed;
         snprintf(b.key, sizeof b.key, "r%d:%s:finish", ri, fname);
         sanitize(b.key);
         if (add_block(p, &b) < 0) return -1;
@@ -202,7 +204,14 @@ void xts_plan_condvec(const xts_block_t *b, xts_condvec_t *cv)
   cv->applied = b ? b->applied : 0;
 }
 
-uint64_t xts_run_seed(void) { return (uint64_t)XTS_RUN_SEED; }
+uint64_t xts_run_seed(void) { return run_seed; }
+void xts_set_run_seed(uint64_t seed) { run_seed = seed; }
+
+void xts_plan_reseed(xts_plan_t *p)
+{
+  for (int i = 0; i < p->n; i++)
+    if (!p->profile->rows[p->b[i].row].seed) p->b[i].seed = run_seed;
+}
 
 uint64_t xts_case_seed(const xts_block_t *b, const xts_case_t *c, int repeat)
 {

@@ -19,6 +19,13 @@
  *      miscompiled init would give both variants the same wrong input and no
  *      MISMATCH: the reference catches it.
  *   7. Geometric means of B/A over the kernels that passed.
+ *
+ * Layout shifts (make SHIFTS=...): the image links every kernel once per
+ * code-placement shift.  Steps 2 and 4 then run every shift's copies (the
+ * samples go round the shifts, A and B of one shift back to back), every
+ * copy must return shift 0's result (else UNSTABLE), reps is calibrated
+ * once (A at shift 0), and the kernel's speedup is the median of its
+ * per-shift speedups, with their spread (layout_stats()).
  */
 #include <math.h>
 #include <stddef.h>
@@ -193,6 +200,12 @@ static void sort_doubles(double *s, int n)
 	}
 }
 
+static double median_of(double *s, int n) /* sorts s */
+{
+	sort_doubles(s, n);
+	return (n & 1) ? s[n / 2] : 0.5 * (s[n / 2 - 1] + s[n / 2]);
+}
+
 static void stats(bench_vres *v, int n)
 {
 	double s[BENCH_MAX_SAMPLES];
@@ -202,10 +215,9 @@ static void stats(bench_vres *v, int n)
 		return;
 	for (i = 0; i < n; i++)
 		s[i] = v->sample[i];
-	sort_doubles(s, n);
+	v->tmed = median_of(s, n);
 	v->tmin = s[0];
 	v->tmax = s[n - 1];
-	v->tmed = (n & 1) ? s[n / 2] : 0.5 * (s[n / 2 - 1] + s[n / 2]);
 }
 
 static int is_finite(double x)
@@ -306,8 +318,8 @@ static void check_ref(bench_results *r, bench_kres *e)
 	}
 	for (j = 0; j < r->nvar; j++) {
 		double rel;
-		int ok = exact ? bits_of(e->v[j].ref) == f->bits
-			       : approx_equal(e->v[j].ref, e->ref_value, k->tolerance, &rel);
+		int ok = exact ? bits_of(e->v[0][j].ref) == f->bits
+			       : approx_equal(e->v[0][j].ref, e->ref_value, k->tolerance, &rel);
 
 		if (!ok)
 			e->status |= j ? BST_WRONG_B : BST_WRONG_A;
@@ -345,15 +357,55 @@ static int selected(const char *only, const char *name)
 
 /* ---- one kernel ------------------------------------------------------- */
 
+/* Median speedup over the shifts, spread, noise and the layout verdict
+ * (runner.h); with one shift the speedup is that shift's. */
+static void layout_stats(bench_results *r, bench_kres *e)
+{
+	double t[BENCH_MAX_SHIFTS];
+	int s, j, n, ns = r->nshift;
+
+	e->noise_pct = 0.0;
+	for (j = 0; j < r->nvar; j++) {
+		for (s = n = 0; s < ns; s++) {
+			double x = bench_noise_pct(&e->v[s][j]);
+
+			if (x > e->noise_pct)
+				e->noise_pct = x;
+			if (e->v[s][j].tmin > 0.0)
+				t[n++] = e->v[s][j].tmin;
+		}
+		e->tshow[j] = n == ns ? median_of(t, n) : 0.0;
+	}
+	e->band_pct = 2.0 * e->noise_pct;
+	if (e->band_pct < BENCH_LAYOUT_PCT)
+		e->band_pct = BENCH_LAYOUT_PCT;
+	if (r->nvar != 2)
+		return;
+	for (s = n = 0; s < ns; s++)
+		if (e->sspeed[s] > 0.0 && is_finite(e->sspeed[s]))
+			t[n++] = e->sspeed[s];
+	if (n != ns || !n)
+		return;
+	e->speedup = median_of(t, n);
+	e->sp_min = t[0];
+	e->sp_max = t[n - 1];
+	e->spread_pct = (e->sp_max / e->sp_min - 1.0) * 100.0;
+	if (ns > 1) {
+		e->flip = e->sp_max > 1.0 + e->band_pct / 200.0 &&
+			  e->sp_min < 1.0 - e->band_pct / 200.0;
+		e->layout = e->flip || e->spread_pct > e->band_pct;
+	}
+}
+
 static void run_kernel(bench_results *r, bench_kres *e, uint8_t *arena,
 		       uint64_t target)
 {
-	const bench_kernel *ka = e->kv[0];
-	const int nv = r->nvar;
+	const bench_kernel *ka = e->kv[0][0];
+	const int nv = r->nvar, ns = r->nshift;
 	const uint32_t ab = ka->arena_bytes;
 	uint64_t t, t_one = 0;
 	uint32_t reps = 1;
-	int s, j, nsamples = r->samples;
+	int s, k, j, nsamples = r->samples;
 
 	/* 1. same bytes for everybody: poison, guards, one init */
 	memset(arena, 0xA5, ab);
@@ -361,16 +413,26 @@ static void run_kernel(bench_results *r, bench_kres *e, uint8_t *arena,
 	guard_write(arena + ab, 1);
 	ka->init(arena);
 
-	/* 2. warm-up; the results are the references */
-	for (j = 0; j < nv; j++) {
-		e->v[j].ref = e->kv[j]->run(arena);
-		e->v[j].calls = 1;
+	/* 2. warm-up; shift 0's results are the references, the copies at the
+	 * other shifts must return the same */
+	for (k = 0; k < ns; k++) {
+		for (j = 0; j < nv; j++) {
+			bench_vres *v = &e->v[k][j];
+			double x = e->kv[k][j]->run(arena);
+
+			v->ref = k ? e->v[0][j].ref : x;
+			v->calls = 1;
+			if (bits_of(x) != bits_of(v->ref)) {
+				v->bad_calls = 1;
+				v->bad_value = x;
+			}
+		}
 	}
 
-	/* 3. calibrate with A: double reps until a block takes 1/8 of the
-	 * target, then scale. */
+	/* 3. calibrate with A (shift 0): double reps until a block takes 1/8
+	 * of the target, then scale. */
 	for (;;) {
-		t = time_block(ka->run, arena, reps, &e->v[0]);
+		t = time_block(ka->run, arena, reps, &e->v[0][0]);
 		if (reps == 1)
 			t_one = t;
 		if (t >= target / 8 || reps >= REPS_MAX)
@@ -392,13 +454,16 @@ static void run_kernel(bench_results *r, bench_kres *e, uint8_t *arena,
 		if (t_one > 4 * target && nsamples > 3)
 			nsamples = 3;
 
-		/* 4. samples, alternating the order */
+		/* 4. samples, alternating the order; each sample goes round
+		 * the shifts, A and B of one shift back to back */
 		for (s = 0; s < nsamples; s++) {
-			for (j = 0; j < nv; j++) {
-				int v = nv == 2 ? (j ^ (s & 1)) : 0;
+			for (k = 0; k < ns; k++) {
+				for (j = 0; j < nv; j++) {
+					int v = nv == 2 ? (j ^ (s & 1)) : 0;
 
-				t = time_block(e->kv[v]->run, arena, reps, &e->v[v]);
-				e->v[v].sample[s] = (double)t / (double)reps;
+					t = time_block(e->kv[k][v]->run, arena, reps, &e->v[k][v]);
+					e->v[k][v].sample[s] = (double)t / (double)reps;
+				}
 			}
 		}
 	}
@@ -408,15 +473,19 @@ static void run_kernel(bench_results *r, bench_kres *e, uint8_t *arena,
 	/* 6. guards, stability, A vs B */
 	if (!guard_ok(arena - BENCH_GUARD_BYTES, 0) || !guard_ok(arena + ab, 1))
 		e->status |= BST_OVERRUN;
-	for (j = 0; j < nv; j++) {
-		stats(&e->v[j], e->samples);
-		if (e->v[j].bad_calls)
-			e->status |= BST_UNSTABLE;
-		if (e->samples && !(e->v[j].tmin > 0.0))
-			e->status |= BST_NOTIME;
+	for (k = 0; k < ns; k++) {
+		for (j = 0; j < nv; j++) {
+			stats(&e->v[k][j], e->samples);
+			if (e->v[k][j].bad_calls)
+				e->status |= BST_UNSTABLE;
+			if (e->samples && !(e->v[k][j].tmin > 0.0))
+				e->status |= BST_NOTIME;
+		}
+		if (nv == 2 && e->v[k][0].tmin > 0.0 && e->v[k][1].tmin > 0.0)
+			e->sspeed[k] = e->v[k][1].tmin / e->v[k][0].tmin;
 	}
 	if (nv == 2) {
-		double a = e->v[0].ref, b = e->v[1].ref, rel = 0.0;
+		double a = e->v[0][0].ref, b = e->v[0][1].ref, rel = 0.0;
 		int same;
 
 		if (ka->flags == BENCH_F_EXACT) {
@@ -429,9 +498,8 @@ static void run_kernel(bench_results *r, bench_kres *e, uint8_t *arena,
 		e->rel_diff = rel;
 		if (!same)
 			e->status |= BST_MISMATCH;
-		if (e->v[0].tmin > 0.0 && e->v[1].tmin > 0.0)
-			e->speedup = e->v[1].tmin / e->v[0].tmin;
 	}
+	layout_stats(r, e);
 	check_ref(r, e);
 }
 
@@ -450,8 +518,8 @@ static int table_len(const bench_variant_info *v)
 
 static void geomeans(bench_results *r)
 {
-	double lsum[BENCH_CAT_COUNT], lall = 0.0;
-	int i, c;
+	double lsum[BENCH_CAT_COUNT], lall = 0.0, lsh[BENCH_MAX_SHIFTS];
+	int i, c, s;
 
 	for (c = 0; c < BENCH_CAT_COUNT; c++) {
 		lsum[c] = 0.0;
@@ -461,6 +529,11 @@ static void geomeans(bench_results *r)
 	r->ngeo_all = 0;
 	r->geo_all = 0.0;
 	r->nfailed = 0;
+	r->nlayout = r->nflip = 0;
+	for (s = 0; s < BENCH_MAX_SHIFTS; s++) {
+		lsh[s] = 0.0;
+		r->geo_shift[s] = 0.0;
+	}
 	for (i = 0; i < r->nk; i++) {
 		const bench_kres *e = &r->k[i];
 
@@ -475,21 +548,30 @@ static void geomeans(bench_results *r)
 		r->ngeo[c]++;
 		lall += log(e->speedup);
 		r->ngeo_all++;
+		/* the median exists only if every shift has a speedup */
+		for (s = 0; s < r->nshift; s++)
+			lsh[s] += log(e->sspeed[s]);
+		r->nlayout += e->layout;
+		r->nflip += e->flip;
 	}
 	for (c = 0; c < BENCH_CAT_COUNT; c++)
 		if (r->ngeo[c])
 			r->geo[c] = exp(lsum[c] / r->ngeo[c]);
-	if (r->ngeo_all)
+	if (r->ngeo_all) {
 		r->geo_all = exp(lall / r->ngeo_all);
+		for (s = 0; s < r->nshift; s++)
+			r->geo_shift[s] = exp(lsh[s] / r->ngeo_all);
+	}
 }
 
-int bench_run_all(bench_results *r, const bench_variant_info *const *vars,
-		  int nvar, const bench_opts *o,
+int bench_run_all(bench_results *r,
+		  const bench_variant_info *const (*vars)[BENCH_MAX_VARIANTS], int nvar,
+		  const int *shifts, int nshift, const bench_opts *o,
 		  void (*progress)(const bench_results *, int i, int phase),
 		  void *arena)
 {
 	uint64_t t_start, target;
-	int i, j, n, nb;
+	int i, j, k, n, nb;
 
 	memset(r, 0, sizeof(*r));
 	r->samples = o->samples;
@@ -501,31 +583,43 @@ int bench_run_all(bench_results *r, const bench_variant_info *const *vars,
 	r->quick = o->quick;
 	r->tb_hz = plat_ticks_per_sec();
 	r->cyc_per_tick = plat_cycles_per_tick();
-	if (nvar < 1 || nvar > BENCH_MAX_VARIANTS || !vars || !vars[0]) {
+	if (nvar < 1 || nvar > BENCH_MAX_VARIANTS || !vars || !vars[0][0]) {
 		r->error = "no variant tables";
 		return -1;
 	}
+	if (nshift < 1 || nshift > BENCH_MAX_SHIFTS || !shifts) {
+		r->error = "bad number of layout shifts";
+		return -1;
+	}
 	r->nvar = nvar;
-	for (j = 0; j < nvar; j++) {
-		r->var[j] = vars[j];
-		if (!vars[j]) {
-			r->error = "variant table missing";
-			return -1;
+	r->nshift = nshift;
+	for (k = 0; k < nshift; k++) {
+		r->shift[k] = shifts[k];
+		for (j = 0; j < nvar; j++) {
+			if (!vars[k][j]) {
+				r->error = "variant table missing";
+				return -1;
+			}
 		}
 	}
+	for (j = 0; j < nvar; j++)
+		r->var[j] = vars[0][j];
 	if (!arena) {
 		r->error = "no arena";
 		return -1;
 	}
 
-	n = table_len(vars[0]);
+	n = table_len(vars[0][0]);
 	r->ntable = n;
-	if (nvar == 2) {
-		nb = table_len(vars[1]);
-		if (nb != n) {
-			r->error = "A and B kernel tables differ in length";
-			if (nb < n)
-				n = nb;
+	for (k = 0; k < nshift; k++) {
+		for (j = 0; j < nvar; j++) {
+			nb = table_len(vars[k][j]);
+			if (nb != n) {
+				r->error = k ? "kernel tables of the shifts differ in length"
+					     : "A and B kernel tables differ in length";
+				if (nb < n)
+					n = nb;
+			}
 		}
 	}
 	if (n > BENCH_MAX_KERNELS) {
@@ -535,7 +629,7 @@ int bench_run_all(bench_results *r, const bench_variant_info *const *vars,
 
 	/* the list first, so progress can show i/n */
 	for (i = 0; i < n; i++) {
-		const bench_kernel *ka = vars[0]->kernels[i];
+		const bench_kernel *ka = vars[0][0]->kernels[i];
 		bench_kres *e;
 
 		if (!selected(o->only, ka ? ka->name : NULL))
@@ -543,8 +637,9 @@ int bench_run_all(bench_results *r, const bench_variant_info *const *vars,
 		e = &r->k[r->nk++];
 		e->index = i;
 		e->k = ka;
-		for (j = 0; j < nvar; j++)
-			e->kv[j] = vars[j]->kernels[i];
+		for (k = 0; k < nshift; k++)
+			for (j = 0; j < nvar; j++)
+				e->kv[k][j] = vars[k][j]->kernels[i];
 	}
 	if (!r->nk) {
 		if (!r->error)
@@ -566,13 +661,22 @@ int bench_run_all(bench_results *r, const bench_variant_info *const *vars,
 		if (e->k && !e->k->init && !e->k->run) {
 			e->status |= BST_MISSING;
 		} else {
-			for (j = 0; j < nvar && !why; j++)
-				why = check_desc(e->kv[j]);
-			if (!why && nvar == 2) {
-				if (strcmp(e->kv[0]->name, e->kv[1]->name))
-					why = "A and B names differ";
-				else if (!same_desc(e->kv[0], e->kv[1]))
-					why = "A and B descriptors differ";
+			for (k = 0; k < nshift && !why; k++)
+				for (j = 0; j < nvar && !why; j++)
+					why = check_desc(e->kv[k][j]);
+			for (k = 0; k < nshift && !why; k++) {
+				for (j = 0; j < nvar && !why; j++) {
+					const bench_kernel *x = e->kv[k][j], *a = e->kv[0][0];
+
+					if (x == a)
+						continue;
+					if (strcmp(a->name, x->name))
+						why = k ? "names differ between shifts"
+							: "A and B names differ";
+					else if (!same_desc(a, x))
+						why = k ? "descriptors differ between shifts"
+							: "A and B descriptors differ";
+				}
 			}
 			if (why) {
 				e->status |= BST_BADDESC;

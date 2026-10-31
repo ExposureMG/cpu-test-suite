@@ -111,6 +111,31 @@ python3 tools/xts_recv.py --out xts-runs --keep-listening   # several runs / con
 python3 tools/xts_recv.py --quarantine-out quarantine.txt   # append a quarantine line for every CRASH/HANG
 python3 tools/xts_recv.py --timeout 60                      # finish a run after 60 s of silence (no END)
 ```
+
+### Multi-pass sessions (several runs in one boot)
+A profile defined with `XTS_PROFILE_PASSES(id, n, ...)` (the `toolchain` profile: 5) or any profile built with
+`make PASSES=<n>` runs all of its rows `n` times in one boot. Every pass is a complete run of its own: new run nonce,
+HELLO ... END, its own `xts-runs/<console_tag>/<run_id>/` directory, base seed `SEED + pass index` (random cases
+differ, case ids stay the same). HELLO and END carry `"session": {"id", "pass", "passes"}` (id = the first pass's
+run id). Start the receiver **once**, as usual (`make recv`): even in its default one-run mode it keeps listening
+until every pass of the session has ended, then writes
+
+```
+xts-runs/<console_tag>/session-<id>/
+    session.json        per pass: run directory, COMPLETE/INCOMPLETE, END status, records, seed, missing frames,
+                        duration; the session verdict, why it ended, and the xts_schedmodel.py command for the passes
+    merged/             tools/xts_merge.py over the complete passes (merged.jsonl, merged.csv, summary.json)
+```
+and prints one session line (`N received, N complete -> COMPLETE`). The exit status is 0 only if every pass is complete.
+A pass that ends with a crash or hang ends the session at once (the console halted); otherwise the receiver gives up
+on a missing pass after `--session-wait` seconds (default 600) without a new one. `--no-merge` skips the merge. With
+`--run-dir DIR` (host dry runs) pass k goes to `DIR/pass<k>/` and `session.json` to `DIR`.
+
+The console pauses `PASS_GAP_S` seconds (default 30) between passes: the receiver writes a pass's directory when its
+END arrives (about 8 s for 30,000 records) without reading the socket, and the next pass must not start meanwhile or
+its first frames overflow the PC's socket buffer (Linux caps it at `net.core.rmem_max`; raising it, e.g.
+`sudo sysctl -w net.core.rmem_max=67108864`, adds margin). The screen counts the pause down.
+
 Ctrl-C writes whatever has arrived (a run without END is INCOMPLETE). If the console hangs hard (the transmitter core
 too), the last breadcrumb in `receive.json` names the case that was about to run.
 
@@ -129,6 +154,7 @@ too), the last breadcrumb in `receive.json` names the case that was about to run
 | `full` | all of the above, in that order |
 | `frontend` | `frontend.loop`: cost of a loop iteration for bodies of 1-160 words at every loop-top offset of a 128-byte line, and the old-vs-line-layout method check (the data behind the timing layout below) |
 | `loaduse` | `ldst.*` at the default condition: the direct load-to-use chains `luse.*` (load, 14 dependent ops, `isync`, against the same chain from an independent register) next to the CR-detour `lat.*` values for FPR/VR loads |
+| `toolchain` | **5 passes** (a multi-pass session, below): the inputs of the Xenon GCC cost model and scheduler (libxenon-toolchain) - `frontend.loop` and `frontend.branch`, `lat.*`, `tput.*`, `bypass.*`, `issue.*` (with `issue.parity`), `unit.*`, `ucode`, `ldst.*` (direct FP/VR load-to-use chains, cache and data_align sweeps), `branch` (+ code_align), `sysops`, `mem.*`, `tc.*` (the GCC model's own kernels and correctness probes, when built in), and the SMT inputs sampled with `max_cases` (latency, pairing and throughput under every sibling load, low-priority throughput, other-core load). About 20 min per pass, 1 h 40 min per session |
 | `tlb_bisect` | `probe.tlb`: mem.hier's page-spread chase at 1600-2048 pages, ascending, breadcrumb before every case (found the 2040-page lockup; the cases from 2040 up are quarantined) |
 
 Rows with `.sweep = 1` vary one axis at a time and skip families that are not sensitive to it, on top of a
@@ -170,6 +196,8 @@ no baseline comparison is made.
 | `lat.data` | timing | data-dependent latency/issue by operand bin (int/mul/div/FP/vector, denormals, NJ) |
 | `bypass.matrix` | sched | producer x consumer x operand-slot extra cycles, distance sweeps, mtctr/mtlr hide distances |
 | `issue.pair` | sched | ordered dual-issue pairs against a verified 1-cycle filler, overlap +- error |
+| `frontend.branch` | calib | a loop with one internal forward branch (taken / not taken / alternating) at every fetch-group phase of the loop top, the branch and its target: the bsearch/quicksort loop shape the straight-line `frontend.loop` map does not cover |
+| `issue.parity` | sched | issue.pair's A B units with A on an odd word (issue.pair's layout) and on an even word: does pairing depend on the word parity (the order asymmetries of the pair matrix)? value = even start, detail `cycles_odd`, `parity_dependent` |
 | `unit.conflict` | sched | shared-pipe detection (mixes at several ratios), unpipelined busy time, pipe-class graph |
 | `ucode` | sched | microcoded/cracked detection per instruction variant: isolated cost and cost to neighbours |
 | `ldst.lat` | sched | load-to-use per form and cache level, throughput, load-hit-store matrix, cross-file transfers, misalignment, reservations |
@@ -199,6 +227,8 @@ There is deliberately no `fpscr_ni` axis: FPSCR[NI] cannot be set on Xenon.
 | Option | Effect |
 |---|---|
 | `PROFILE=<p>` | which profile is linked (one ELF per profile) |
+| `PASSES=<n>` | runs per boot (default 0 = the profile's own count): every pass is a complete run with base seed SEED + pass index; the receiver waits for all (see Multi-pass sessions) |
+| `PASS_GAP_S=<s>` | pause between passes (default 30 on the console, 12 in the host dry run) so the receiver has written the previous pass |
 | `SEED=<n>` | base seed of the profile rows (default 1): repeated runs with different seeds draw different random cases; case ids stay the same, so runs merge per case (recorded as `seed` in HELLO and `receive.json`) |
 | `BUILD=<dir>` | isolated output directory |
 | `CFLAGS_EXTRA=-DXTS_CRUMB_EVERY_TIMING=<n>` | breadcrumb cadence of timing/sched/mem/smt/calib families (default 16; 0 = block start only) |

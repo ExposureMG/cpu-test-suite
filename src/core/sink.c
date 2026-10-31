@@ -24,6 +24,8 @@ static uint32_t st_count[XTS_ST_COUNT];
 static uint64_t msg_count[XTS_PK_MAX + 1], rec_hash = XTS_FNV64_INIT, block_records;
 static uint32_t last_seq, send_failures;
 static int sending;               /* recursion guard: a failing send logs, the log line sends */
+static uint64_t sess_id;          /* multi-pass session (xts_sink_set_session); sess_passes 0 = none */
+static int sess_pass, sess_passes;
 xts_sink_tap_fn xts_sink_tap;
 #ifdef XTS_HOST
 int xts_vocab_check = 1;
@@ -125,6 +127,13 @@ void xts_sink_close(void)
   opened = helloed = 0;
 }
 
+void xts_sink_set_session(uint64_t id, int pass, int passes)
+{
+  sess_id = id;
+  sess_pass = pass;
+  sess_passes = passes > 1 ? passes : 0;
+}
+
 void xts_sink_set_block(const char *key, const xts_condvec_t *cv, const char *family)
 {
   snprintf(cur_block, sizeof cur_block, "%s", key ? key : "");
@@ -169,6 +178,16 @@ int xts_sink_end(const char *status)
   xj_kv_str(&j, "run_id", run_id);
   xj_kv_uint(&j, "records", seq);
   xj_kv_uint(&j, "send_failures", send_failures);
+  if (sess_passes) {
+    xj_key(&j, "session");
+    xj_obj(&j);
+    char sid[20];
+    snprintf(sid, sizeof sid, "%016llx", (unsigned long long)sess_id);   /* = pass 1's run_id */
+    xj_kv_str(&j, "id", sid);
+    xj_kv_int(&j, "pass", sess_pass);
+    xj_kv_int(&j, "passes", sess_passes);
+    xj_end(&j);
+  }
   xj_key(&j, "status_counts");
   xj_obj(&j);
   for (int s = 0; s < XTS_ST_COUNT; s++) xj_kv_uint(&j, xts_status_name(s), st_count[s]);

@@ -47,6 +47,12 @@ consecutive `seq` values and the same `msg`. Types:
 Payload objects may carry more members than listed (e.g. BLOCK `family`, `ms`, `seq`, `temps`; END `run_id`,
 `records`, `send_failures`, `status_counts`, `net`); receivers ignore members they do not know.
 
+**Multi-pass sessions.** A profile with several passes per boot sends one complete run per pass, one after the other:
+each pass has its own `run_nonce` (and `run_id`), its `seq` and `msg` numbers start at 1 again, and END's counts,
+`last_seq`, `rec_hash` and `net` cover that pass only. HELLO and END then carry
+`"session": {"id": "<16 hex, the first pass's run_id>", "pass": k, "passes": n}` (k 1-based). Single-pass runs have
+no `session` member. The console waits `PASS_GAP_S` seconds (default 30) after a pass's END before the next HELLO.
+
 **`rec_hash`:** FNV-1a 64-bit over the payloads of all REC messages, concatenated in `msg` order, with offset basis
 0xcbf29ce484222325 and prime 0x100000001b3. Lowercase hex.
 
@@ -81,6 +87,10 @@ Payload objects may carry more members than listed (e.g. BLOCK `family`, `ms`, `
   `null` for `--replay`. `kernel_drops` counts datagrams the PC's kernel dropped on the socket because its buffer was full
   (Linux `SO_RXQ_OVFL`; `null` when unknown). Loss with `kernel_drops` 0 shortly after a silence of >= 100 ms points at
   Wi-Fi power save on the receiving PC (`iw dev <wlan> set power_save off`).
+- **Sessions:** a run whose HELLO/END has a `session` member is one pass; the receiver keeps listening until all
+  `passes` of the session have ended (or one ended `crashed`/`hang`, or `--session-wait` seconds passed without a new
+  pass) and writes `<out>/<console_tag>/session-<id>/session.json` plus `merged/` (xts_merge.py over the complete
+  passes). The session is complete only when every pass is complete.
 - **Output:** the run directory `<out>/<console_tag>/<run_nonce>/` holds `results.jsonl`, `results.csv`,
   `failures.jsonl`, `run.log`, `sysinfo.json`, `summary.json`, `temps.csv` (from BLOCK `temps`), `crash.json` (when a
   CRASH or HANG message arrived), `receive.json` and `capture.bin` (every unique valid frame, for `--replay`).

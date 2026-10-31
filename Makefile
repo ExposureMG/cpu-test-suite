@@ -8,7 +8,9 @@
 #   make check [BUILD=...]                 check_draws (RNG draw order), check_encoder (vs xenon-as), check_model (vs results4),
 #                                          check_illegal, check_records
 #   make recv [OUT=xts-runs]               receive a console run (tools/xts_recv.py: listens on UDP 36360, writes
-#                                          OUT/<console_tag>/<run_nonce>/); RECV_ARGS="--keep-listening" for several runs
+#                                          OUT/<console_tag>/<run_nonce>/); RECV_ARGS="--keep-listening" for several runs;
+#                                          a multi-pass profile (toolchain, PASSES=<n>): it waits for every pass, then
+#                                          writes OUT/<console_tag>/session-<id>/ (session.json, merged/)
 #   make usb USB=/run/media/<you>/<stick>  copy the ELF to <stick>/xenon.elf (XeLL autoloads it) and unmount; nothing else
 #   make clean [BUILD=...]
 #
@@ -103,6 +105,15 @@ OPT_DEFS += -DXTS_NET_SETTLE_S=$(NET_SETTLE_S)
 #   case ids stay the same, so runs still merge and compare per case.
 SEED ?= 1
 OPT_DEFS += -DXTS_RUN_SEED=$(SEED)
+# PASSES: runs per boot (0 = the profile's own count, XTS_PROFILE_PASSES). Every pass is a complete run with base seed
+# SEED + pass index; the receiver waits for all of them (HELLO/END "session").
+PASSES ?= 0
+OPT_DEFS += -DXTS_PASSES=$(PASSES)
+# PASS_GAP_S: seconds between two passes (default 30 on the console, 12 in the host dry run) so the receiver has
+#   written a pass's run directory before the next pass's frames arrive.
+ifdef PASS_GAP_S
+OPT_DEFS += -DXTS_PASS_GAP_S=$(PASS_GAP_S)
+endif
 # NET_WAKE_MS / NET_WAKE_IDLE_MS / NET_WAKE_FPS: after NET_WAKE_IDLE_MS (default 50) without a frame, send the next
 #   NET_WAKE_MS (default 150) at NET_WAKE_FPS (default 200) copies/s, so a receiver on Wi-Fi in power save wakes before
 #   its access point's buffer overflows (lost bursts after measurement pauses). NET_WAKE_MS=0: off.
@@ -225,6 +236,45 @@ $(ELF32): $(ELF) tools/check_illegal.py
 	@echo "built $@ (profile $(PROFILE), build id $(BUILD_ID))"
 
 all: $(ELF32)
+
+# ---------------------------------------------------------------------------------------------------- tc.probes
+# Optional: family tc.probes (src/tests/tc_probes.c) runs the libxenon-toolchain hardware probes (TC_PROBES, that
+# repository's tools/xts-probes). They are compiled by that toolchain's compiler TC_GCC at -m32 -mcpu=xenon (-m32 = the
+# 32-bit SysV ABI and ELF32 of the objects here; VMX128 and the multiply sequences under test need the new compiler)
+# with the per-file flags of its build.sh, and linked into the console ELF. The probe objects may only import
+# TC_ALLOWED_UNDEF from the old libc/libm (checked before the link): at these flags the new compiler calls no libgcc
+# helper, and -m32 never uses the out-of-line VMX128 save/restore routines. Without TC_GCC (TC_GCC= disables) the
+# family is built without them and its cases report skip; the host build never uses them (skip records as well).
+TC_TOP ?= $(HOME)/Projects/libxenon-toolchain
+TC_PROBES ?= $(TC_TOP)/tools/xts-probes
+TC_GCC ?= $(TC_TOP)/install/bin/powerpc64-xenon-elf-gcc
+TC_ON := $(if $(TC_GCC),$(if $(and $(wildcard $(TC_GCC)),$(wildcard $(TC_PROBES)/xts_probes.h)),1))
+TC_STAMP := $(BUILD)/.tc_probes
+$(shell mkdir -p $(BUILD); echo '$(TC_ON) $(TC_GCC) $(TC_PROBES)' | cmp -s - $(TC_STAMP) || echo '$(TC_ON) $(TC_GCC) $(TC_PROBES)' > $(TC_STAMP))
+$(CON)/obj/src/tests/tc_probes.o: $(TC_STAMP)
+ifeq ($(TC_ON),1)
+TCP := $(CON)/tc-probes
+TC_CFLAGS := -m32 -mcpu=xenon -fno-pic -g -ffunction-sections -fdata-sections -I$(TC_PROBES)
+TC_PROBE_OBJS := $(addprefix $(TCP)/,probe_vmul.o probe_vmul_ref.o probe_recip.o probe_est.o probe_vpkd3d.o xts_probes.o)
+TC_ALLOWED_UNDEF := vsnprintf sqrtf
+$(TCP)/probe_vmul.o: TC_OPT := -O3 -fwrapv
+$(TCP)/probe_vmul_ref.o: TC_OPT := -O2 -fwrapv -fno-tree-vectorize -fno-tree-slp-vectorize
+$(TCP)/probe_recip.o: TC_OPT := -O2 -ffast-math -mrecip=all
+$(TCP)/probe_est.o $(TCP)/probe_vpkd3d.o: TC_OPT := -O2
+$(TCP)/xts_probes.o: TC_OPT := -O2 -Wall -DXTS_PROBES_NO_MAIN
+$(TCP)/%.o: $(TC_PROBES)/%.c $(wildcard $(TC_PROBES)/*.h $(TC_PROBES)/*.def) $(TC_STAMP)
+	@mkdir -p $(@D)
+	$(TC_GCC) $(TC_CFLAGS) $(TC_OPT) -c $< -o $@
+$(TCP)/imports.ok: $(TC_PROBE_OBJS)
+	@def=`$(XPREFIX)nm --defined-only $^ | awk 'NF == 3 { print $$3 }' | sort -u`; \
+	 bad=`$(XPREFIX)nm -u $^ | awk 'NF == 2 { print $$2 }' | sort -u | while read s; do \
+	   echo "$$def" | grep -qxF "$$s" || case " $(TC_ALLOWED_UNDEF) " in *" $$s "*) ;; *) echo $$s ;; esac; done | tr '\n' ' '`; \
+	 if [ -n "$$bad" ]; then echo "tc.probes: the probe objects import $$bad(allowed: $(TC_ALLOWED_UNDEF))" >&2; exit 1; fi; \
+	 echo "tc.probes: probe objects import only $(TC_ALLOWED_UNDEF)" > $@; cat $@
+$(CON)/obj/src/tests/tc_probes.o: XCFLAGS += -DXTS_TC_PROBES=1 -I$(TC_PROBES)
+$(ELF): $(TC_PROBE_OBJS) $(TCP)/imports.ok
+CON_OBJS += $(TC_PROBE_OBJS)
+endif
 
 # ---------------------------------------------------------------------------------------------------- host build
 HST_OBJS := $(patsubst %.c,$(HST)/obj/%.o,$(HST_SRCS)) $(HST)/gen/isa_table.o

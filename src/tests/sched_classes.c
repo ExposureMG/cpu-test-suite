@@ -450,11 +450,14 @@ static int sc_body(xts_kbuf_t *k, int depth, void *arg)
 {
   sc_unit_t *u = arg;
   memset(&es, 0, sizeof es);
+  int pad = u->special ? 0 : u->phase_pad & 3;
+  for (int i = 0; i < pad; i++) emit_filler(k);
   for (int j = 0; j < depth; j++) {
     if (u->special) { emit_special(k, u); continue; }
     for (int i = 0; i < u->nitems; i++)
       for (int c = 0; c < u->it[i].count; c++) emit_item(k, u, i);
   }
+  for (int i = 0; pad && i < 4 - pad; i++) emit_filler(k);
   return k->err ? -1 : 0;
 }
 

@@ -3,7 +3,8 @@
  * Every block and case of the profile runs through the real scheduler and sink; single words are simulated by the model
  * where it can, every kernel is built with the encoder and every word decoded back. The results leave as UDP datagrams
  * to XTS_NET_HOST (set by xts_recv.py --exec; default 127.0.0.1:36360), exactly the messages the console sends.
- * Exit status 2 if any kernel word does not decode to the instruction it was built for. */
+ * Exit status 2 if any kernel word does not decode to the instruction it was built for. A multi-pass profile (or
+ * PASSES=<n>) runs every pass; the receiver writes pass k to $(BUILD)/dryrun-<p>/run/pass<k>/ and session.json there. */
 #include <stdio.h>
 #include <xts/xts.h>
 #include <xts/net.h>
@@ -18,8 +19,13 @@ int main(int argc, char **argv)
   }
   xts_run_opts_t o = { 0 };
   o.dryrun = 1;
-  int r = xts_run(&xts_profile, &o);
-  printf("host-dryrun %s: %s (run %s sent to the receiver)\n", xts_profile.name, r == 0 ? "OK" : "PROBLEMS",
-         xts_current_run_id ? xts_current_run_id : "?");
+  int done = 0, n = xts_profile_pass_count(&xts_profile);
+  int r = xts_run_passes(&xts_profile, &o, &done);
+  if (n > 1)
+    printf("host-dryrun %s: %s (%d of %d passes; last run %s sent to the receiver)\n", xts_profile.name,
+           r == 0 ? "OK" : "PROBLEMS", done, n, xts_current_run_id ? xts_current_run_id : "?");
+  else
+    printf("host-dryrun %s: %s (run %s sent to the receiver)\n", xts_profile.name, r == 0 ? "OK" : "PROBLEMS",
+           xts_current_run_id ? xts_current_run_id : "?");
   return r < 0 ? 1 : r;
 }

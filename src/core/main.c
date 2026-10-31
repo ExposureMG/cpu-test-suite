@@ -15,6 +15,10 @@
  *
  * run_id = the run nonce (16 hex digits, xts_net_run_nonce); console_tag = xts_plat_default_tag. The receiver files the
  * run under <out>/<console_tag>/<run_id>/.
+ *
+ * Multi-pass session (xts_run_passes, profile `passes` / PASSES=<n>): the run above, `passes` times in one boot. Pass k
+ * > 0 starts a new transport run (xts_net_new_run: new nonce, frame/message numbers from 1), reuses the plan of pass 0
+ * reseeded with SEED + k, and HELLO/END carry "session": {"id", "pass", "passes"} (id = pass 0's nonce, pass 1-based).
  */
 #include <xts/timing.h>
 #include <stdio.h>
@@ -42,6 +46,8 @@ static const xts_profile_t *active_prof;
 static uint32_t cur_timeout_us = 2000000u;
 static uint64_t crumbs_sent, crumb_wait_fail, crumb_wait_ticks, crumb_wait_max;
 static uint64_t thread_tb_seen[6];
+static uint64_t sess_id;
+static int sess_pass, sess_passes;   /* 1-based pass of sess_passes; 0 = not a session */
 
 int xts_profile_names_family(const char *family)
 {
@@ -380,6 +386,15 @@ static void run_block(int bi, int *fam_setup)
   block_end(b, &cv, fname, t0);
 }
 
+/* " (pass k/n)" on the screen lines of a multi-pass session */
+static const char *pass_tag(void)
+{
+  static char b[32];
+  if (!sess_passes) return "";
+  snprintf(b, sizeof b, " (pass %d/%d)", sess_pass, sess_passes);
+  return b;
+}
+
 /* HELLO: sysinfo + profile + plan + core map + quarantine list */
 static int hello_json(char *buf, int cap)
 {
@@ -412,6 +427,16 @@ static int hello_json(char *buf, int cap)
   xj_kv_str(&j, "console_tag", tag);
   xj_kv_int(&j, "crumb_every_timing", xts_crumb_every_timing);
   xj_kv_uint(&j, "seed", xts_run_seed());
+  if (sess_passes > 0) {
+    xj_key(&j, "session");
+    xj_obj(&j);
+    char sid[20];
+    snprintf(sid, sizeof sid, "%016llx", (unsigned long long)sess_id);   /* = pass 1's run_id */
+    xj_kv_str(&j, "id", sid);
+    xj_kv_int(&j, "pass", sess_pass);
+    xj_kv_int(&j, "passes", sess_passes);
+    xj_end(&j);
+  }
   xj_key(&j, "quarantine");
   xj_arr(&j);
   for (int i = 0; i < nquar; i++) {
@@ -442,14 +467,21 @@ int xts_run(const xts_profile_t *prof, const xts_run_opts_t *o)
 
   xts_plat_default_tag(tag, sizeof tag);
   sanitize_tag(tag);
+  int reuse = o->passes > 1 && o->pass > 0 && plan.profile == prof && plan.n > 0;
+  if (o->passes > 1 && o->pass > 0) xts_net_new_run();       /* every pass is a run of its own */
   snprintf(run_id, sizeof run_id, "%016llx", (unsigned long long)xts_net_run_nonce());
   xts_current_run_id = run_id;
+  sess_passes = o->passes > 1 ? o->passes : 0;
+  sess_pass = o->pass + 1;
+  sess_id = o->session ? o->session : xts_net_run_nonce();
   xts_sink_open(run_id, tag);
+  xts_sink_set_session(sess_id, sess_pass, sess_passes);
   for (int i = 0; i < 6; i++) {                        /* thread crashes from before the run are not this run's */
     const xts_xc_crash_t *t = xts_xc_crash_slot(i);
     if (t && t->valid) thread_tb_seen[i] = t->tb;
   }
-  if (xts_plan_build(&plan, prof) < 0) {
+  if (reuse) xts_plan_reseed(&plan);                   /* same blocks and case ids, this pass's seed */
+  else if (xts_plan_build(&plan, prof) < 0) {
     xts_screen_error("scheduler: out of memory");
     hello_json(hello, sizeof hello);
     xts_sink_hello(hello);
@@ -461,6 +493,9 @@ int xts_run(const xts_profile_t *prof, const xts_run_opts_t *o)
   plan_quar = calloc(plan.n + 1, 1);
   xts_sink_hello(hello_json(hello, sizeof hello) > 0 ? hello : "{}");
   xts_log("XTS %s profile %s run %s tag %s build %s", XTS_VERSION, prof->name, run_id, tag, xts_build_id());
+  if (sess_passes)
+    xts_log("session %016llx: pass %d of %d, seed %llu", (unsigned long long)sess_id, sess_pass, sess_passes,
+            (unsigned long long)xts_run_seed());
   xts_log("transport: UDP messages (docs/PROTOCOL.md); breadcrumbs before every case (self/semantic families), every %d case(s) "
           "otherwise; %d quarantined case(s) compiled in", xts_crumb_every_timing, nquar);
   if (probs) xts_screen_error("registry: %d problem(s), see run.log", probs);
@@ -475,7 +510,8 @@ int xts_run(const xts_profile_t *prof, const xts_run_opts_t *o)
     if (o->max_blocks && done >= o->max_blocks) break;
     const xts_family_t *f = xts_family_get(plan.b[i].fam);
     const uint32_t *sc = xts_sink_status_counts();
-    xts_status_line(0, "XTS %s block %d/%d %s | pass %u fail %u skip %u | sent %llu msgs, %u failed", prof->name, i + 1, plan.n,
+    xts_status_line(0, "XTS %s%s block %d/%d %s | pass %u fail %u skip %u | sent %llu msgs, %u failed", prof->name,
+                    pass_tag(), i + 1, plan.n,
                     xts_family_name(f), (unsigned)sc[XTS_ST_PASS], (unsigned)sc[XTS_ST_FAIL], (unsigned)sc[XTS_ST_SKIP],
                     (unsigned long long)(xts_sink_msg_count(XTS_PK_REC) + xts_sink_msg_count(XTS_PK_LOG)),
                     (unsigned)xts_sink_send_failures());
@@ -512,7 +548,7 @@ int xts_run(const xts_profile_t *prof, const xts_run_opts_t *o)
   const uint32_t *sc = xts_sink_status_counts();
   int dr = xts_sink_end(finished ? "complete" : "aborted");
   unsigned fails = xts_sink_send_failures();
-  xts_status_line(1, "XTS %s done: pass %u fail %u skip %u hang %u crash %u | END sent%s%s", prof->name,
+  xts_status_line(1, "XTS %s%s done: pass %u fail %u skip %u hang %u crash %u | END sent%s%s", prof->name, pass_tag(),
                   (unsigned)sc[XTS_ST_PASS], (unsigned)sc[XTS_ST_FAIL], (unsigned)sc[XTS_ST_SKIP], (unsigned)sc[XTS_ST_HANG],
                   (unsigned)sc[XTS_ST_CRASH], dr ? " (drain timed out)" : "", fails ? " | SOME MESSAGES NOT SENT" : "");
   xts_sink_close();
@@ -524,4 +560,52 @@ int xts_run(const xts_profile_t *prof, const xts_run_opts_t *o)
   plan_ran = plan_quar = NULL;
   if (fails) return -5;
   return (o->dryrun && xts_dry_stats.bad_words) ? 2 : 0;
+}
+
+#ifndef XTS_PASSES
+#define XTS_PASSES 0              /* PASSES=<n> (make): override the profile's pass count; 0 = the profile's */
+#endif
+/* PASS_GAP_S=<s> (make): pause between two passes. The receiver writes a pass's run directory when its END arrives
+ * (about 8 s for 30,000 records on a desktop) and does not read the socket meanwhile; the next pass must not start
+ * before that or its first frames overflow the PC's socket buffer (Linux caps it at net.core.rmem_max). */
+#ifndef XTS_PASS_GAP_S
+#ifdef XTS_HOST
+#define XTS_PASS_GAP_S 12         /* the host dry run sends without pacing */
+#else
+#define XTS_PASS_GAP_S 30
+#endif
+#endif
+
+int xts_profile_pass_count(const xts_profile_t *prof)
+{
+  int n = XTS_PASSES > 0 ? XTS_PASSES : prof->passes;
+  return n > 1 ? n : 1;
+}
+
+int xts_run_passes(const xts_profile_t *prof, const xts_run_opts_t *o, int *done)
+{
+  static const xts_run_opts_t defaults;
+  int n = xts_profile_pass_count(prof), r = 0;
+  xts_run_opts_t po = o ? *o : defaults;
+  uint64_t seed0 = xts_run_seed();
+  if (done) *done = 0;
+  po.passes = n;
+  po.session = 0;
+  for (int k = 0; k < n; k++) {
+    po.pass = k;
+    xts_set_run_seed(seed0 + (uint64_t)k);
+    r = xts_run(prof, &po);
+    if (k == 0) po.session = xts_net_run_nonce();
+    if (r < 0 && r != 2) break;                          /* plan failure / transport failure: the next pass would too */
+    if (done) *done = k + 1;
+    if (k + 1 < n && XTS_PASS_GAP_S > 0) {               /* let the receiver write this pass before the next starts */
+      xts_net_drain(20u * 1000u * 1000u);
+      for (int t = XTS_PASS_GAP_S; t > 0; t--) {
+        xts_status_line(1, "XTS %s: pass %d/%d done (END sent); pass %d starts in %d s", prof->name, k + 1, n, k + 2, t);
+        xts_delay_ms(1000);
+      }
+    }
+  }
+  xts_set_run_seed(seed0);
+  return r;
 }

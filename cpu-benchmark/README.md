@@ -26,6 +26,7 @@ Requirements: both toolchains (paths in the Makefile, override with
     make single     # build/bench-xenon3.elf32, build/bench-old16.elf32
     make host       # build/host/bench-host       everything for the host
     make check      # host ASan run + host runs at 148x41 and 74x27 + object checks
+                    #   + link-map and code-placement checks of the A/B image
                     #   + Xenon instruction-set scan of the three images
     make asm        # build/asm/<variant>/<kernel>.s for both variants
     make sizes      # .text bytes per kernel, A vs B
@@ -41,6 +42,13 @@ Variables:
 * `PLACE_ALIGN` (default 16384): every kernel object's and every newlib
   routine's code and tables start on this boundary (see "Code placement"
   below); 0 links them packed.
+* `SHIFTS` (default `0`): code layout shifts in bytes, for example
+  `make SHIFTS="0 4 8 12"`.  `bench-ab.elf32` (and the host build) then
+  contain every kernel and newlib routine once per shift, with its code
+  starting that many bytes past its `PLACE_ALIGN` boundary, and the run
+  measures A and B at every shift (see "Layout shifts" below).  Multiples
+  of 4 below `PLACE_ALIGN`, at most 8 values.  The default builds and runs
+  what it did before this option existed.
 * `BENCH_DEFS`: extra harness defines, for example
   `make BENCH_DEFS="-DBENCH_SAMPLES=9 -DBENCH_SAMPLE_MS=100"`
   (defaults: 7 samples of about 60 ms per kernel and variant).
@@ -70,7 +78,12 @@ Progress lines look like
 
     [ 7/33] bsearch  BR   A   812.3 us  B   905.1 us   1.114x  ok
 
-and are also sent to the serial port.  A crash or hang leaves the name of
+and are also sent to the serial port.  With layout shifts the times and
+the speedup are medians over the shifts, followed by the spread and the
+layout marker (see "Layout shifts"):
+
+    [ 7/33] bsearch  BR   A   812.3 us  B   905.1 us  1.114x  1.7%*  ok
+  A crash or hang leaves the name of
 the kernel that was running on the screen.  A failed check adds a line with
 the results, for example
 
@@ -108,6 +121,46 @@ variant (or `none`, `stale`, `byteorder` when there was nothing to compare
 with) and `ref_value` the reference result.  Lines starting with `#` are
 headers.
 
+With layout shifts (`SHIFTS` with more than one value) the log has, in
+addition, and only then:
+
+    #shifts,count,bytes,layout_sensitive,flips,layout_pct
+    shifts,4,0;4;8;12,3,1,1
+    #kernel,name,...,ref,ref_value,shift
+    kernel,crc32,INT,A,xenon3,ok,EXACT,...,ok,779898862,0
+    ...
+    kernel,crc32,INT,B,old16,ok,EXACT,...,ok,779898862,12
+    #layout,name,category,status,shifts,speedup_median,speedup_min,speedup_max,spread_pct,noise_pct,band_pct,flip,sensitive,a_ticks,b_ticks,speedups
+    layout,bsearch,BR,ok,4,1.114000,1.102000,1.121000,1.724,0.120,1.000,0,1,38963.10,43404.90,1.102000;1.113000;1.115000;1.121000
+    #geomean,category,speedup,kernels
+    geomean,ALL,1.143000,33
+    #geomean_shift,shift,speedup,kernels
+    geomean_shift,0,1.141000,33
+
+* `shifts`: the number of shifts, their offsets in bytes (`;`-separated, in
+  measurement order), how many passed kernels are layout-sensitive and how
+  many of those flip, and `BENCH_LAYOUT_PCT` (see "Layout shifts").
+* `kernel` lines: one per kernel, shift and variant (shift by shift, A then
+  B), with one more field at the end, `shift` (bytes).  Every other field
+  keeps its meaning for the copy measured at that shift: `speedup` is that
+  shift's B/A, `samples`/`sample_ticks` that copy's samples, `calls` and
+  `bad_calls` that copy's calls (A at the first shift also counts the
+  calibration calls).  `status`, `reps`, `kernel_ms` (all shifts) and the
+  reference fields are per kernel and repeat on each line; `result` is
+  the result every copy must return (the first shift's; a copy that
+  returned anything else has `bad_calls` > 0 and makes the kernel
+  UNSTABLE).
+* `layout` lines: one per kernel: `speedup_median` (the kernel's speedup),
+  `speedup_min`/`speedup_max` and `spread_pct` = (max / min - 1) x 100 over
+  the shifts, `noise_pct` (the largest noise of any copy), `band_pct`,
+  `flip` and `sensitive` (0/1, see "Layout shifts"), `a_ticks`/`b_ticks`
+  (the times shown on screen: the median over the shifts of each shift's
+  minimum, ticks per run) and `speedups`, the speedup at each shift in the
+  order of the `shifts` line.
+* `geomean` lines keep their format; their speedup is the geomean of the
+  per-kernel medians.  `geomean_shift` lines give the geomean at each
+  shift over the same kernels.
+
 ## Reading the screen
 
 The layout adapts to the console size (`console_get_dimensions`, after
@@ -120,6 +173,16 @@ overscan): 720p is about 160x45 (148x41 with overscan), 480p about 80x30
 * **compact** (480p): two kernels per line with A us, B us and the speedup
   (or the failure word);
 * **minimal**: smaller screens, overall result and speedups only.
+
+With layout shifts the speedup column is the median over the shifts, the
+us and cyc/u columns are the medians over the shifts of each shift's time
+(so B us / A us need not equal the speedup exactly), and a `*` follows the
+speedup of a layout-sensitive kernel (`!` when the faster toolchain
+depends on the shift).  wide adds one speedup column per shift (`+0`,
+`+4`, ...; a `min-max` column instead when they do not fit) and the
+`spread` column, yellow for layout-sensitive kernels; the description and
+the bar get what room is left.  The footer adds a "by shift" line with the
+geomean at each shift and the number of layout-sensitive kernels.
 
 Header: title, one line per toolchain (label, compiler, default CPU, kernel
 flags), run information (kernels, samples, run time), CPU PVR and speed,
@@ -197,6 +260,54 @@ whichever copy runs as A).  The console has a fixed clock and nothing else
 running, so its noise column should be much lower: read speedups against
 it.  The padding makes `bench-ab.elf32` about 4 MB.
 
+### Layout shifts
+
+Identical placement makes A and B comparable, but it is still *one*
+placement: where a loop or a branch lands relative to the fetch blocks,
+the 128-byte cache lines and the branch history table indices can favour
+one compiler's code by a few percent by accident (the first console runs
+showed 3-5 % in branchy kernels that the compilers' loop alignment did not
+explain).  `make SHIFTS="0 4 8 12"` measures every kernel at several
+placements and separates the two effects:
+
+* Each kernel object and newlib routine is linked once per shift, its code
+  starting `shift` bytes past its `PLACE_ALIGN` boundary, the same for A
+  and B (`tools/place.py --shift` puts that many no-ops in front of the
+  code; tables stay on the boundary).  The copy at shift S has its own
+  symbol namespace (`xenon3_s4_k_crc32`, `old16_s4_lib_memcpy`); the copy
+  at shift 0 is the one the default image has.  `make check` verifies in
+  the link map that every copy starts at boundary + shift
+  (`check_syms.py place`).
+* Each kernel is initialised once; every sample then goes round the shifts,
+  A and B of one shift back to back (alternating AB/BA as before), with
+  the same `reps`.  Every copy must return the same result as the first
+  shift's (else UNSTABLE).
+* The kernel's **speedup is the median of its per-shift speedups**, and the
+  geomeans use these medians.  **spread** = max / min - 1 of the per-shift
+  speedups.  A kernel is **layout-sensitive** (`*`) when the spread exceeds
+  its noise band, max(`BENCH_LAYOUT_PCT` = 1 %, 2 x its noise), or when its
+  speedup is above 1 at one shift and below 1 at another by more than half
+  the band (`!`, the verdict flips).  The band is twice the noise because
+  a speedup is a ratio of two times that each scatter by up to the noise.
+  Change the floor with `BENCH_DEFS=-DBENCH_LAYOUT_PCT=0.5`.  Failed
+  kernels are never marked.
+
+Read it like this: a kernel whose speedup holds at every shift (small
+spread, no marker) measures code generation; a marked kernel's speedup at
+any single placement is partly placement luck, and its median is the
+better estimate.  Shifts of 4-28 bytes move code within the fetch blocks
+and undo the compilers' own 16/32-byte function and loop alignment (for
+both); multiples of 32 keep that alignment and move the code across cache
+lines; 1024 and more move it to other cache sets and branch history
+entries.
+
+Cost: every extra shift adds about 3.9 MB to `bench-ab.elf32` (4 MB with
+one shift, 15.6 MB with 4, 31 MB with 8; `make check` fails above XeLL's
+32 MiB ELF limit) and about 28 s to the run (33 kernels x 7 samples x 60 ms
+x 2 variants), so 4 shifts take about 1.5 minutes longer.  Fewer or
+shorter samples (`BENCH_DEFS`) shorten it.  The single-toolchain images
+are not affected (one copy, no shifts).
+
 ### Known toolchain defects
 
 * **sad16 shows WRONG B: test16old miscompiles it.**  At `-O2` test16old
@@ -259,19 +370,25 @@ expression), and on any kernel the host could not check against
   undefined ones (`__errno`) back, and verifies that every
   `<id>_lib_<routine>` is defined and that no unprefixed definition leaks.
   It prints the members pulled and the externals left.
-* `tools/check_syms.py kernels|sizes|map|isa ...`: the kcheck rules (allowed
+* `tools/check_syms.py kernels|sizes|map|place|isa ...`: the kcheck rules (allowed
   undefined symbols, no writable data, namespaced globals) over every
   cross-compiled kernel object, the size table, the A/B link-map check
   (each variant's `*_lib_*` routines come from its own prefixed object, the
   harness's `memcpy` from testxenon3's libc), and the instruction-set scan:
   every code word of the images must decode under testxenon3's
   `objdump -M xenon`, whose allow-list holds only what the Xenon PPE
-  implements (test16old's assembler does not check this).
-* `tools/place.py --align N in.o out.o`: copies an object with its
-  non-empty `.text*`/`.rodata*` sections aligned to N (it patches
-  `sh_addralign`; test16old's binutils 2.32 objcopy has no option for it).
-  The images link these copies; `libprefix.py --align N` does the same for
-  each newlib member.
+  implements (test16old's assembler does not check this).  `place` checks
+  in the A/B link map that every kernel's and newlib member's code and
+  tables start on their `PLACE_ALIGN` boundary, the code `shift` bytes
+  past it.
+* `tools/place.py --align N [--shift S --rename OLD=NEW] in.o out.o`:
+  copies an object with its non-empty `.text*`/`.rodata*` sections aligned
+  to N (it patches `sh_addralign`; test16old's binutils 2.32 objcopy has no
+  option for it).  The images link these copies; `libprefix.py --align N`
+  does the same for each newlib member.  For layout shifts `--shift S` also
+  puts S bytes of no-ops in front of the code (symbols, relocations and
+  section-relative addends move with it) and `--rename` gives the copy its
+  own symbol namespace; `libprefix.py --shift S` shifts every member.
 * `tools/mkrefs.py`: writes `src/harness/refs.h` from a qemu-check run and a
   host run (`make refs`); `--verify` checks it is current (`make check`).
 * `tools/kcheck.sh src/kernels/<cat>_<id>.c <id>`: per-kernel checks for

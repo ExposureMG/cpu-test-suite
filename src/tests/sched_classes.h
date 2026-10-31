@@ -118,6 +118,9 @@ typedef struct sc_unit {
   int special_dist;          /* fillers between the move and the branch */
   int base_word;             /* set by pre(): word index LR points at */
   int words;                 /* words per unit (computed) */
+  int phase_pad;             /* 0..3 filler words in front of the body (and 4 - phase_pad after it, so the body keeps a
+                                multiple of 4 words): with the line layout's loop top at byte 12, phase_pad 1 starts the
+                                first unit on an even word, i.e. at byte 0 of the next fetch group (issue.parity) */
 } sc_unit_t;
 void sc_unit_init(sc_unit_t *u);
 sc_item_t *sc_unit_add(sc_unit_t *u, int cls, int slot, int count);

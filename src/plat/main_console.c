@@ -18,11 +18,13 @@ void usb_shutdown(void);             /* plat_console.c */
 
 static int suite_main(void)
 {
-  int r = xts_run(&xts_profile, NULL);
+  int done = 0, n = xts_profile_pass_count(&xts_profile);
+  int r = xts_run_passes(&xts_profile, NULL, &done);
   int d = xts_net_drain(20u * 1000u * 1000u);
-  char msg[160];
-  snprintf(msg, sizeof msg, "%s (xts_run %d)%s",
-           r == 0 ? "run finished: results were broadcast (see tools/xts_recv.py on the PC)" : "run stopped early", r,
+  char msg[200], passes[48] = "";
+  if (n > 1) snprintf(passes, sizeof passes, " (%d of %d passes)", done, n);
+  snprintf(msg, sizeof msg, "%s%s (xts_run %d)%s",
+           r == 0 ? "run finished: results were broadcast (see tools/xts_recv.py on the PC)" : "run stopped early", passes, r,
            d < 0 ? "; WARNING: the transmitter did not drain its queue in 20 s" : "");
   xts_plat_halt(msg);
 }
@@ -39,6 +41,11 @@ int main(void)
   xts_plat_status(line);
   snprintf(line, sizeof line, "XTS: profile %s - %s", xts_profile.name, xts_profile.desc);
   xts_plat_screen(line);
+  if (xts_profile_pass_count(&xts_profile) > 1) {
+    snprintf(line, sizeof line, "XTS: %d passes in this boot, one run each (start the receiver once; it waits for all)",
+             xts_profile_pass_count(&xts_profile));
+    xts_plat_screen(line);
+  }
   xts_plat_screen("XTS: no storage: results leave as UDP broadcasts; run tools/xts_recv.py on a PC on the same link");
   int r = xts_net_init();
   if (r < 0) {

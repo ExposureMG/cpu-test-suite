@@ -176,6 +176,10 @@ logged and ignored, rows matching no family are fine. Row fields: `families kind
 `.max_cases = N` caps each matching family in that row to an evenly strided sample (stride `ceil(n/N)`: cases 0, stride,
 2*stride ... in enumeration order, so a cap still covers every instruction of an instruction-ordered family); case ids and
 seeds are unchanged, only the block keys' chunk numbers refer to the sampled list.
+`XTS_PROFILE_PASSES(mine, 5, "...", rows...)` runs the whole profile 5 times per boot, each pass a complete run (new run
+nonce, HELLO/END with `"session"`, base seed SEED + pass; README "Multi-pass sessions"); `make PASSES=<n>` overrides
+the count for any profile. Families need nothing for this: setup/teardown run once per pass, and records keep their keys
+(a pass is told apart by its run_id).
 
 ## Host unit tests (`host/tests/<name>.c`)
 ```c
