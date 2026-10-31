@@ -1,0 +1,26 @@
+# Known toolchain defects for qemu-check step 4 (read by tools/qemu/qcheck.sh).
+#
+# Each entry turns ONE root-caused kernel failure into an expected failure
+# (XFAIL): the runner still prints the FAIL line, but step 4 passes as long
+# as that kernel's "@R" line (qrunner -m) matches the entry exactly: status
+# flags, A result bits and B result bits.  Any other failure, or the same
+# kernel failing with a different result, still fails the check.  A listed
+# kernel that passes is reported as XPASS (then the entry is stale).
+#
+# Fields: id, flags (hex, qrunner QF_* bits), A result and B result (the
+# IEEE double bits of run()'s return value, hex), then the reason.
+#
+# sad16: test16old miscompiles the abs() SAD reduction at -O2.  Its gcc
+# patch (toolchain/gcc-16.2.0.diff) sets the conditions of the AltiVec
+# vmsum*, vmul[eo]*, vsum4*/vsum2sws/vsumsws, vmladduhm and vmh[r]addshs
+# define_insns to "(TARGET_ALTIVEC && 0)" but leaves the standard-name
+# expanders that emit them (widen_ssum/widen_usum, dot_prod, ...) enabled.
+# The vectoriser still uses WIDEN_SUM_EXPR, the emitted vmsumshm is dropped,
+# the accumulator is never set and the frame loads are deleted: every SAD is
+# 0 and run() returns 0 (B = 0x00000000).  testxenon3 (A) keeps the loop
+# scalar and returns 0x95dd045c, the host and big-endian reference value.
+# The real image has the same B code (-mcpu=cell, -mpowerpc64), so the A/B
+# image reports sad16 WRONG B on the console (B differs from the reference
+# result in src/harness/refs.h, and from A): that is the benchmark
+# detecting a real test16old bug, not a kernel bug.
+sad16  0010  41e2bba08b800000  0000000000000000  test16old -O2 vectorises the abs() SAD reduction through a widen_sum expander whose vmsum insn its gcc patch disabled: every SAD is 0
